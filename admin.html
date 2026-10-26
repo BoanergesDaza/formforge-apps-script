@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Panel admin | Academia Ejemplo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <header class="admin-bar">
+    <div class="wrap admin-bar-inner">
+      <h1>Panel de administración</h1>
+      <button type="button" class="btn ghost light" id="btn-logout" hidden>Cerrar sesión</button>
+    </div>
+  </header>
+
+  <main class="wrap admin-main">
+    <!-- Ingreso -->
+    <section id="login" class="card">
+      <h2>Ingresar</h2>
+      <form id="login-form">
+        <div class="field">
+          <label for="a-password">Contraseña</label>
+          <input id="a-password" type="password" autocomplete="current-password" required>
+          <p class="error" id="login-error" aria-live="polite"></p>
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn">Ingresar</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Panel -->
+    <div id="panel" hidden>
+      <section class="card">
+        <h2>Correos de aviso</h2>
+        <div class="field">
+          <label for="a-emails">Un correo por línea</label>
+          <p class="hint" id="a-emails-hint">Cada solicitud nueva llega a estos correos con los datos y el enlace a la carpeta del usuario. También reciben acceso de edición a la carpeta principal de Drive, para abrir los archivos.</p>
+          <textarea id="a-emails" rows="3" aria-describedby="a-emails-hint"></textarea>
+        </div>
+        <p class="links">
+          <a id="link-sheet" href="#" target="_blank" rel="noopener">Abrir hoja de respuestas</a>
+          <a id="link-folder" href="#" target="_blank" rel="noopener">Abrir carpeta de Drive</a>
+        </p>
+      </section>
+
+      <section class="card" id="images-card">
+        <h2>Fotos del sitio</h2>
+        <p class="hint">Cambia las fotos de la página principal. Se aplican al instante, sin pulsar "Guardar cambios". Acepta JPG, PNG o WebP; se reducen solas para que la página cargue rápido.</p>
+        <div id="images" class="images"></div>
+        <p class="error" id="images-msg" aria-live="polite"></p>
+      </section>
+
+      <div id="sections"></div>
+
+      <section class="card">
+        <h2>Cambiar contraseña</h2>
+        <form id="password-form">
+          <div class="field">
+            <label for="a-current">Contraseña actual</label>
+            <input id="a-current" type="password" autocomplete="current-password" required>
+          </div>
+          <div class="field">
+            <label for="a-next">Nueva contraseña</label>
+            <p class="hint" id="a-next-hint">Al menos 8 caracteres.</p>
+            <input id="a-next" type="password" autocomplete="new-password" minlength="8" required aria-describedby="a-next-hint">
+            <p class="error" id="password-msg" aria-live="polite"></p>
+          </div>
+          <div class="actions">
+            <button type="submit" class="btn ghost">Cambiar contraseña</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </main>
+
+  <div class="save-bar" id="save-bar" hidden>
+    <div class="wrap save-bar-inner">
+      <p id="save-status" aria-live="polite">Sin cambios.</p>
+      <button type="button" class="btn" id="btn-save">Guardar cambios</button>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

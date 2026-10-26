@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Asesoría académica y elaboración de tesis | Academia Ejemplo</title>
+  <meta name="description" content="Solicitud de cotización y diagnóstico académico de Academia Ejemplo.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="banner-wrap">
+      <img class="banner" src="assets/banner.jpg" width="2000" height="492"
+           alt="Academia Ejemplo. Tu meta, nuestra misión. Asesoría y elaboración de tesis y proyectos.">
+    </div>
+    <div class="wrap hero-text">
+      <h1>Asesoría académica y elaboración de tesis</h1>
+      <p class="lead">Tranquilo/a, tu proyecto está en manos seguras y bajo estricta reserva.</p>
+      <p class="lead">Llena estos datos rápidos para que podamos ver en qué etapa vas y darte una propuesta clara de tiempos y costos hoy mismo.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <ol class="stepper" aria-label="Progreso del formulario" hidden></ol>
+
+    <section id="loading" class="card status" aria-live="polite">
+      <p id="loading-text">Cargando el formulario…</p>
+      <div class="actions" id="loading-actions" hidden>
+        <button type="button" class="btn" id="btn-reload">Reintentar</button>
+      </div>
+    </section>
+
+    <form id="solicitud" novalidate hidden>
+      <!-- Campo trampa para bots: las personas no lo ven. -->
+      <div class="hp" aria-hidden="true">
+        <label>Sitio web <input type="text" name="website" id="f-website" tabindex="-1" autocomplete="off"></label>
+      </div>
+
+      <!-- Las secciones y preguntas se arman con la configuración del panel admin. -->
+      <div id="steps"></div>
+
+      <div class="actions">
+        <button type="button" class="btn ghost" id="btn-back" hidden>Atrás</button>
+        <button type="button" class="btn" id="btn-next">Siguiente</button>
+        <button type="submit" class="btn" id="btn-submit" hidden>Enviar solicitud</button>
+      </div>
+    </form>
+
+    <section id="progress" class="card status" hidden aria-live="polite">
+      <h2 id="progress-title">Enviando tu solicitud…</h2>
+      <p id="progress-text">Preparando tu carpeta…</p>
+      <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="bar-fill" id="progress-bar"></div>
+      </div>
+      <p class="hint" id="progress-detail"></p>
+      <p class="hint">No cierres esta página hasta que termine.</p>
+    </section>
+
+    <section id="failed" class="card status" hidden>
+      <h2>No se pudo completar el envío</h2>
+      <p id="failed-text"></p>
+      <p class="hint">Los archivos que ya subieron no se vuelven a subir.</p>
+      <div class="actions">
+        <button type="button" class="btn ghost" id="btn-edit">Revisar formulario</button>
+        <button type="button" class="btn" id="btn-retry">Reintentar</button>
+      </div>
+    </section>
+
+    <section id="done" class="card status" hidden>
+      <h2>¡Todo listo! Ya recibimos tu información. 👋🎓</h2>
+      <p>Sabemos el esfuerzo y la dedicación que implica una tesis, así que respira hondo: ¡ya diste el primer paso!</p>
+      <p>Revisaremos tu proyecto con estricta confidencialidad y cariño académico. En muy poco tiempo (máximo 24-48 horas hábiles), te escribiremos por WhatsApp para darte un diagnóstico y una propuesta clara para avanzar juntos.</p>
+      <p>¡Gracias por confiar en nosotros para este gran paso!</p>
+      <div class="actions">
+        <button type="button" class="btn" id="btn-new">Enviar otra solicitud</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap foot">Academia Ejemplo · <a href="index.html">Volver al inicio</a></footer>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

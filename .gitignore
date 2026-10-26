@@ -1,0 +1,25 @@
+# Secretos: nunca subir
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.clasp.json
+.clasprc.json
+credentials.json
+token.json
+
+# Herramientas locales / generados
+.claude/
+.agents/
+.taste-skill/
+skills-lock.json
+
+# SO / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+node_modules/
+*.log
