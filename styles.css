@@ -1,4 +1,4 @@
-/* Mismos colores y tipografías que la landing (site.css) y el banner de la marca. */
+/* Same colors and typefaces as the landing page (site.css) and the brand banner. */
 :root {
   --bg: #f6efe2;
   --card: #fffdf8;
@@ -37,7 +37,7 @@ h1, h2 { font-family: var(--display); font-weight: 600; text-transform: uppercas
   padding: 0 16px;
 }
 
-/* Encabezado */
+/* Header */
 .hero {
   background: var(--brand);
   color: var(--brand-ink);
@@ -50,7 +50,7 @@ h1, h2 { font-family: var(--display); font-weight: 600; text-transform: uppercas
 .lead { margin: 0; opacity: .85; }
 .lead + .lead { margin-top: 8px; }
 
-/* Pasos */
+/* Steps */
 .stepper {
   list-style: none;
   display: flex;
@@ -83,7 +83,7 @@ h1, h2 { font-family: var(--display); font-weight: 600; text-transform: uppercas
 .stepper .is-active .num { border-color: var(--brand); background: var(--brand); color: #fff; }
 .stepper .is-done .num { border-color: var(--ok); background: var(--ok); color: #fff; }
 
-/* Tarjetas */
+/* Cards */
 .card {
   background: var(--card);
   border-radius: var(--radius);
@@ -93,7 +93,7 @@ h1, h2 { font-family: var(--display); font-weight: 600; text-transform: uppercas
 }
 .card h2 { margin: 0 0 20px; font-size: 32px; }
 
-/* Campos */
+/* Fields */
 .field {
   margin: 0 0 20px;
   padding: 0;
@@ -143,9 +143,9 @@ input:focus, select:focus, textarea:focus, .choice input:focus-visible, .btn:foc
 }
 .choice:has(input:checked) { border-color: var(--brand); background: #f7ebe3; }
 .choice input { margin: 3px 0 0; width: 18px; height: 18px; flex: none; accent-color: var(--brand); }
-.otro { margin-top: 2px; }
+.other-input { margin-top: 2px; }
 
-/* Archivos */
+/* Files */
 .drop {
   display: block;
   position: relative;
@@ -187,7 +187,7 @@ input:focus, select:focus, textarea:focus, .choice input:focus-visible, .btn:foc
   padding: 4px;
 }
 
-/* Errores */
+/* Errors */
 .error { margin: 6px 0 0; color: var(--error); font-size: 14px; }
 .error:empty { display: none; }
 .has-error input[type=text], .has-error input[type=tel], .has-error input[type=number],
@@ -196,7 +196,7 @@ input:focus, select:focus, textarea:focus, .choice input:focus-visible, .btn:foc
   background: var(--error-bg);
 }
 
-/* Botones */
+/* Buttons */
 .actions { display: flex; gap: 12px; justify-content: flex-end; margin: 8px 0 24px; }
 .btn {
   min-height: 46px;
@@ -212,7 +212,7 @@ input:focus, select:focus, textarea:focus, .choice input:focus-visible, .btn:foc
 .btn:hover { filter: brightness(1.1); }
 .btn.ghost { background: transparent; color: var(--brand); border: 1px solid var(--brand); margin-right: auto; }
 
-/* Estados de envío */
+/* Submission states */
 .status h2 { margin-bottom: 8px; }
 .bar { height: 10px; background: var(--line); border-radius: 99px; overflow: hidden; margin: 12px 0; }
 .bar-fill { height: 100%; width: 0; background: var(--brand); transition: width .3s; }

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Academic coaching and thesis editing | Example Academy</title>
+  <meta name="description" content="Assessment request form of Example Academy.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="banner-wrap">
+      <img class="banner" src="assets/banner.jpg" width="2000" height="492"
+           alt="Example Academy. Your goal, our mission. Coaching and editing for theses and projects.">
+    </div>
+    <div class="wrap hero-text">
+      <h1>Academic coaching and thesis editing</h1>
+      <p class="lead">Relax, your project is in safe hands and strictly confidential.</p>
+      <p class="lead">Fill in these quick details so we can see what stage you are at and give you a clear proposal of timing and costs.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <ol class="stepper" aria-label="Form progress" hidden></ol>
+
+    <section id="loading" class="card status" aria-live="polite">
+      <p id="loading-text">Loading the form...</p>
+      <div class="actions" id="loading-actions" hidden>
+        <button type="button" class="btn" id="btn-reload">Retry</button>
+      </div>
+    </section>
+
+    <form id="request-form" novalidate hidden>
+      <!-- Honeypot field for bots: people do not see it. -->
+      <div class="hp" aria-hidden="true">
+        <label>Website <input type="text" name="website" id="f-website" tabindex="-1" autocomplete="off"></label>
+      </div>
+
+      <!-- Sections and questions are built from the configuration of the admin panel. -->
+      <div id="steps"></div>
+
+      <div class="actions">
+        <button type="button" class="btn ghost" id="btn-back" hidden>Back</button>
+        <button type="button" class="btn" id="btn-next">Next</button>
+        <button type="submit" class="btn" id="btn-submit" hidden>Submit request</button>
+      </div>
+    </form>
+
+    <section id="progress" class="card status" hidden aria-live="polite">
+      <h2 id="progress-title">Sending your request...</h2>
+      <p id="progress-text">Preparing your folder...</p>
+      <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="bar-fill" id="progress-bar"></div>
+      </div>
+      <p class="hint" id="progress-detail"></p>
+      <p class="hint">Do not close this page until it finishes.</p>
+    </section>
+
+    <section id="failed" class="card status" hidden>
+      <h2>The submission could not be completed</h2>
+      <p id="failed-text"></p>
+      <p class="hint">Files that were already uploaded are not uploaded again.</p>
+      <div class="actions">
+        <button type="button" class="btn ghost" id="btn-edit">Review form</button>
+        <button type="button" class="btn" id="btn-retry">Retry</button>
+      </div>
+    </section>
+
+    <section id="done" class="card status" hidden>
+      <h2>All set! We have received your information. 👋🎓</h2>
+      <p>We know the effort and dedication a thesis takes, so take a deep breath: you have already taken the first step!</p>
+      <p>We will review your project in strict confidentiality and with academic care. Very soon (24-48 business hours at most), we will reply by email with an assessment and a clear proposal to move forward together.</p>
+      <p>Thank you for trusting us with this big step!</p>
+      <div class="actions">
+        <button type="button" class="btn" id="btn-new">Send another request</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap foot">Example Academy · <a href="index.html">Back to home</a></footer>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

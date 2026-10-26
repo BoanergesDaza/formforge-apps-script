@@ -1,6 +1,6 @@
 /**
- * Academia Ejemplo — panel admin.
- * Edita los correos de aviso y las preguntas del formulario. Todo se guarda en el Web App.
+ * Example Academy - admin panel.
+ * Edits the notification emails and the form questions. Everything is saved in the Web App.
  */
 (function () {
   'use strict';
@@ -8,18 +8,18 @@
   const SCRIPT_URL = window.APP_CONFIG.SCRIPT_URL;
 
   const TYPE_LABELS = {
-    text: 'Respuesta corta',
-    textarea: 'Párrafo',
-    number: 'Número',
-    date: 'Fecha',
-    select: 'Lista desplegable',
-    radio: 'Opción única',
-    checkbox: 'Casillas (varias opciones)',
-    tel: 'Celular',
-    place: 'Ciudad y país (solo letras)',
-    ci: 'Carnet de identidad',
-    pages: 'Cantidad de páginas',
-    file: 'Subida de archivos',
+    text: 'Short answer',
+    textarea: 'Paragraph',
+    number: 'Number',
+    date: 'Date',
+    select: 'Dropdown',
+    radio: 'Single choice',
+    checkbox: 'Checkboxes (several options)',
+    tel: 'Mobile phone',
+    place: 'City and country (letters only)',
+    idnumber: 'ID number',
+    pages: 'Number of pages',
+    file: 'File upload',
   };
   const CHOICE_TYPES = ['select', 'radio', 'checkbox'];
 
@@ -28,9 +28,9 @@
     config: null,
     customTypes: [],
     typeFamilies: [],
-    slots: [], // fotos editables, leídas de index.html
-    images: {}, // fotos ya cambiadas: slot -> url
-    active: null, // pregunta que se edita ahora (una a la vez, como en Forms)
+    slots: [], // editable photos, read from index.html
+    images: {}, // photos already changed: slot -> url
+    active: null, // the question being edited now (one at a time, like in Google Forms)
     dirty: false,
     saving: false,
   };
@@ -38,7 +38,7 @@
   const $ = (sel, root) => (root || document).querySelector(sel);
 
   // -------------------------------------------------------------------------
-  // Sesión
+  // Session
   // -------------------------------------------------------------------------
 
   function saveToken(token) {
@@ -47,7 +47,7 @@
       if (token) sessionStorage.setItem('form-admin', token);
       else sessionStorage.removeItem('form-admin');
     } catch (err) {
-      // Sin almacenamiento: la sesión dura lo que la pestaña.
+      // No storage: the session lasts as long as the tab.
     }
   }
 
@@ -68,11 +68,11 @@
         body: JSON.stringify(Object.assign({ action, token: state.token }, payload)),
       });
     } catch (err) {
-      throw new Error('No hay conexión con el servidor.');
+      throw new Error('Cannot reach the server.');
     }
-    const json = await res.json().catch(() => ({ ok: false, error: 'Respuesta inválida del servidor.' }));
+    const json = await res.json().catch(() => ({ ok: false, error: 'Invalid response from the server.' }));
     if (!json.ok) {
-      if (json.code === 'AUTH') showLogin('Tu sesión expiró. Vuelve a ingresar.');
+      if (json.code === 'AUTH') showLogin('Your session expired. Please sign in again.');
       const error = new Error(json.error);
       error.code = json.code;
       throw error;
@@ -109,10 +109,10 @@
   }
 
   // -------------------------------------------------------------------------
-  // Fotos del sitio
+  // Site photos
   // -------------------------------------------------------------------------
 
-  /** Las fotos y sus nombres salen de index.html: agregar un data-slot allí la suma al panel. */
+  /** The photos and their names come from index.html: adding a data-slot there adds it to the panel. */
   async function loadSlots() {
     try {
       const res = await fetch('index.html', { cache: 'no-cache' });
@@ -135,13 +135,13 @@
     const box = $('#images');
     box.textContent = '';
     if (!state.slots.length) {
-      box.appendChild(el('p', { className: 'note', text: 'No se pudo leer la lista de fotos de la página principal.' }));
+      box.appendChild(el('p', { className: 'note', text: 'Could not read the list of photos of the home page.' }));
       return;
     }
     state.slots.forEach(function (item) {
       const custom = Boolean(state.images[item.slot]);
       const input = el('input', {
-        type: 'file', accept: 'image/jpeg,image/png,image/webp', className: 'file-hidden', 'aria-label': 'Elegir foto para ' + item.label,
+        type: 'file', accept: 'image/jpeg,image/png,image/webp', className: 'file-hidden', 'aria-label': 'Choose a photo for ' + item.label,
         onchange: (e) => { if (e.target.files[0]) changeImage(item, e.target.files[0]); e.target.value = ''; },
       });
       box.appendChild(el('figure', { className: 'img-tile' }, [
@@ -149,14 +149,14 @@
         el('figcaption', { text: item.label }),
         el('div', { className: 'img-actions' }, [
           input,
-          el('button', { type: 'button', className: 'btn ghost small', text: 'Cambiar', onclick: () => input.click() }),
-          custom ? el('button', { type: 'button', className: 'btn ghost small', text: 'Restaurar', onclick: () => resetImage(item) }) : null,
+          el('button', { type: 'button', className: 'btn ghost small', text: 'Change', onclick: () => input.click() }),
+          custom ? el('button', { type: 'button', className: 'btn ghost small', text: 'Restore', onclick: () => resetImage(item) }) : null,
         ]),
       ]));
     });
   }
 
-  /** Reduce a 1600 px y pasa a JPG en el navegador: el servidor recibe una foto liviana. */
+  /** Shrinks to 1600 px and converts to JPG in the browser: the server receives a light photo. */
   function shrinkImage(file) {
     return new Promise(function (resolve, reject) {
       const url = URL.createObjectURL(file);
@@ -172,49 +172,49 @@
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         URL.revokeObjectURL(url);
         canvas.toBlob(function (blob) {
-          if (!blob) { reject(new Error('No se pudo procesar la imagen.')); return; }
+          if (!blob) { reject(new Error('The image could not be processed.')); return; }
           const reader = new FileReader();
           reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
-          reader.onerror = () => reject(new Error('No se pudo leer la imagen.'));
+          reader.onerror = () => reject(new Error('The image could not be read.'));
           reader.readAsDataURL(blob);
         }, 'image/jpeg', 0.85);
       };
       img.onerror = function () {
         URL.revokeObjectURL(url);
-        reject(new Error('No se pudo abrir esa imagen. Usa JPG, PNG o WebP.'));
+        reject(new Error('That image could not be opened. Use JPG, PNG or WebP.'));
       };
       img.src = url;
     });
   }
 
   async function changeImage(item, file) {
-    if (file.size > 30 * 1024 * 1024) { imageMessage('La imagen pesa demasiado (máximo 30 MB).', true); return; }
-    imageMessage('Subiendo "' + item.label + '"…');
+    if (file.size > 30 * 1024 * 1024) { imageMessage('The image is too large (maximum 30 MB).', true); return; }
+    imageMessage('Uploading "' + item.label + '"...');
     try {
       const data = await shrinkImage(file);
       const result = await api('adminUploadImage', { slot: item.slot, data });
       state.images[item.slot] = result.url;
       renderImages();
-      imageMessage('Foto cambiada: ' + item.label + '. Ya se ve en la página.');
+      imageMessage('Photo changed: ' + item.label + '. It is already live on the page.');
     } catch (err) {
-      imageMessage('No se pudo subir: ' + err.message, true);
+      imageMessage('Could not upload: ' + err.message, true);
     }
   }
 
   async function resetImage(item) {
-    imageMessage('Restaurando…');
+    imageMessage('Restoring...');
     try {
       await api('adminResetImage', { slot: item.slot });
       delete state.images[item.slot];
       renderImages();
       imageMessage('Foto original restaurada: ' + item.label + '.');
     } catch (err) {
-      imageMessage('No se pudo restaurar: ' + err.message, true);
+      imageMessage('Could not restore: ' + err.message, true);
     }
   }
 
   // -------------------------------------------------------------------------
-  // Dibujo del editor
+  // Editor drawing
   // -------------------------------------------------------------------------
 
   function el(tag, attrs, children) {
@@ -247,9 +247,9 @@
     state.config.sections.forEach(function (section, si) {
       const wrap = el('section', { className: 'sec' });
       wrap.appendChild(el('div', { className: 'sec-head' }, [
-        el('span', { className: 'sec-count', text: 'Sección ' + (si + 1) + ' de ' + total }),
+        el('span', { className: 'sec-count', text: 'Section ' + (si + 1) + ' of ' + total }),
         el('input', {
-          id: 'sec-' + section.id, type: 'text', maxlength: 80, value: section.title, 'aria-label': 'Título de la sección ' + (si + 1),
+          id: 'sec-' + section.id, type: 'text', maxlength: 80, value: section.title, 'aria-label': 'Title of section ' + (si + 1),
           oninput: (e) => { section.title = e.target.value; setDirty(true); },
         }),
       ]));
@@ -258,8 +258,8 @@
         .forEach((q) => wrap.appendChild(renderQuestion(q)));
       const add = el('button', {
         type: 'button', className: 'add', onclick: () => addQuestion(section.id),
-      }, [el('span', { className: 'add-plus', 'aria-hidden': 'true', text: '+' }), el('span', { text: 'Agregar pregunta' })]);
-      // Soltar una pregunta aquí la manda al final de la sección.
+      }, [el('span', { className: 'add-plus', 'aria-hidden': 'true', text: '+' }), el('span', { text: 'Add question' })]);
+      // Dropping a question here sends it to the end of the section.
       add.addEventListener('dragover', (e) => { if (drag.id) { e.preventDefault(); add.classList.add('drop'); } });
       add.addEventListener('dragleave', () => add.classList.remove('drop'));
       add.addEventListener('drop', function (e) {
@@ -273,7 +273,7 @@
   }
 
   // -------------------------------------------------------------------------
-  // Tarjeta de pregunta: vista compacta y, al hacer clic, editor
+  // Question card: compact view and, on click, editor
   // -------------------------------------------------------------------------
 
   const drag = { id: null };
@@ -283,7 +283,7 @@
     const card = el('article', { className: 'q' + (active ? ' active' : '') + (q.enabled ? '' : ' off'), 'data-id': q.id });
 
     card.appendChild(el('button', {
-      type: 'button', className: 'q-grip', draggable: 'true', title: 'Arrastra para reordenar', 'aria-label': 'Arrastrar para reordenar',
+      type: 'button', className: 'q-grip', draggable: 'true', title: 'Drag to reorder', 'aria-label': 'Drag to reorder',
       text: '⠿',
       ondragstart: function (e) {
         drag.id = q.id;
@@ -318,8 +318,8 @@
   }
 
   function renderPreview(q) {
-    const view = el('div', { className: 'q-view', tabindex: '0', role: 'button', 'aria-label': 'Editar: ' + (q.label || 'pregunta sin texto') }, [
-      el('div', { className: 'q-title', text: (q.label || 'Pregunta sin texto') + (q.required ? ' *' : '') }),
+    const view = el('div', { className: 'q-view', tabindex: '0', role: 'button', 'aria-label': 'Edit: ' + (q.label || 'question without text') }, [
+      el('div', { className: 'q-title', text: (q.label || 'Question without text') + (q.required ? ' *' : '') }),
       q.help ? el('div', { className: 'q-help', text: q.help }) : null,
     ]);
 
@@ -327,16 +327,16 @@
       const opts = el('div', { className: 'q-preview' });
       const filled = (q.options || []).filter(Boolean);
       filled.slice(0, 4).forEach((o, i) => opts.appendChild(el('div', { className: 'prev-opt', text: previewGlyph(q.type, i) + ' ' + o })));
-      if (filled.length > 4) opts.appendChild(el('div', { className: 'prev-opt more', text: '… y ' + (filled.length - 4) + ' más' }));
-      if (q.other) opts.appendChild(el('div', { className: 'prev-opt', text: previewGlyph(q.type, 0) + ' Otro…' }));
+      if (filled.length > 4) opts.appendChild(el('div', { className: 'prev-opt more', text: '... and ' + (filled.length - 4) + ' more' }));
+      if (q.other) opts.appendChild(el('div', { className: 'prev-opt', text: previewGlyph(q.type, 0) + ' Other...' }));
       view.appendChild(opts);
     } else {
       view.appendChild(el('div', { className: 'q-preview muted', text: TYPE_LABELS[q.type] || q.type }));
     }
 
     view.appendChild(el('div', { className: 'q-tags' }, [
-      q.required ? null : el('span', { className: 'tag', text: 'Opcional' }),
-      q.enabled ? null : el('span', { className: 'tag off', text: 'Desactivada' }),
+      q.required ? null : el('span', { className: 'tag', text: 'Optional' }),
+      q.enabled ? null : el('span', { className: 'tag off', text: 'Disabled' }),
     ]));
 
     const open = () => activate(q.id);
@@ -356,10 +356,10 @@
     const wrap = el('div', { className: 'q-edit' });
 
     const typeSelect = el('select', {
-      id: id + '-type', 'aria-label': 'Tipo de pregunta', disabled: typeChoices(q).length < 2,
+      id: id + '-type', 'aria-label': 'Question type', disabled: typeChoices(q).length < 2,
       onchange: function (e) {
         q.type = e.target.value;
-        if (CHOICE_TYPES.indexOf(q.type) !== -1 && !(q.options && q.options.length)) q.options = ['Opción 1'];
+        if (CHOICE_TYPES.indexOf(q.type) !== -1 && !(q.options && q.options.length)) q.options = ['Option 1'];
         if (q.type === 'select') q.other = false;
         setDirty(true);
         render();
@@ -369,52 +369,52 @@
 
     wrap.appendChild(el('div', { className: 'q-top' }, [
       el('input', {
-        id: id + '-label', className: 'q-title-input', type: 'text', maxlength: 300, value: q.label, placeholder: 'Pregunta', 'aria-label': 'Texto de la pregunta',
+        id: id + '-label', className: 'q-title-input', type: 'text', maxlength: 300, value: q.label, placeholder: 'Question', 'aria-label': 'Question text',
         oninput: (e) => { q.label = e.target.value; setDirty(true); },
       }),
       typeSelect,
     ]));
     wrap.appendChild(el('input', {
-      id: id + '-help', className: 'q-help-input', type: 'text', maxlength: 600, value: q.help || '', placeholder: 'Texto de ayuda (opcional)', 'aria-label': 'Texto de ayuda',
+      id: id + '-help', className: 'q-help-input', type: 'text', maxlength: 600, value: q.help || '', placeholder: 'Help text (optional)', 'aria-label': 'Help text',
       oninput: (e) => { q.help = e.target.value; setDirty(true); },
     }));
 
     if (CHOICE_TYPES.indexOf(q.type) !== -1) wrap.appendChild(renderOptions(q));
 
     if (q.locked) {
-      wrap.appendChild(el('p', { className: 'note', text: 'Esta pregunta arma el nombre de la carpeta del usuario: siempre está activa y es obligatoria.' }));
+      wrap.appendChild(el('p', { className: 'note', text: 'This question builds the name of the user folder: it is always active and required.' }));
     } else if (q.type === 'file') {
-      wrap.appendChild(el('p', { className: 'note', text: 'Los archivos se guardan en su propia subcarpeta. Los tipos y tamaños permitidos son fijos.' }));
+      wrap.appendChild(el('p', { className: 'note', text: 'Files are saved in their own subfolder. The allowed types and sizes are fixed.' }));
     } else if (q.system && typeChoices(q).length < 2) {
-      wrap.appendChild(el('p', { className: 'note', text: 'El tipo de esta pregunta es fijo porque valida un dato concreto (celular, fecha, páginas, ciudad…).' }));
+      wrap.appendChild(el('p', { className: 'note', text: 'The type of this question is fixed because it validates a specific datum (phone, date, pages, city...).' }));
     }
 
     const canDuplicate = state.customTypes.indexOf(q.type) !== -1;
     const sectionSelect = el('select', {
-      id: id + '-section', 'aria-label': 'Sección de la pregunta',
+      id: id + '-section', 'aria-label': 'Section of the question',
       onchange: (e) => { q.section = e.target.value; setDirty(true); render(); focusId(id + '-section'); },
-    }, state.config.sections.map((sec, i) => el('option', { value: sec.id, text: 'Sección ' + (i + 1), selected: sec.id === q.section })));
+    }, state.config.sections.map((sec, i) => el('option', { value: sec.id, text: 'Section ' + (i + 1), selected: sec.id === q.section })));
 
     wrap.appendChild(el('div', { className: 'q-foot' }, [
       el('div', { className: 'q-switches' }, [
-        toggle(id + '-required', 'Obligatoria', q.required, Boolean(q.locked), (v) => { q.required = v; }),
-        toggle(id + '-enabled', 'Activa en el formulario', q.enabled, Boolean(q.locked), (v) => { q.enabled = v; }),
+        toggle(id + '-required', 'Required', q.required, Boolean(q.locked), (v) => { q.required = v; }),
+        toggle(id + '-enabled', 'Active in the form', q.enabled, Boolean(q.locked), (v) => { q.enabled = v; }),
         q.type === 'date' && !q.system
-          ? toggle(id + '-future', 'Solo fechas desde hoy', Boolean(q.futureOnly), false, (v) => { q.futureOnly = v; })
+          ? toggle(id + '-future', 'Only dates from today', Boolean(q.futureOnly), false, (v) => { q.futureOnly = v; })
           : null,
       ]),
       el('div', { className: 'q-actions' }, [
         sectionSelect,
-        iconButton('↑', 'Subir', () => move(q, -1)),
-        iconButton('↓', 'Bajar', () => move(q, 1)),
-        canDuplicate ? iconButton('⧉', 'Duplicar', () => duplicate(q)) : null,
-        q.system ? null : iconButton('🗑', 'Eliminar', () => remove(q), true),
+        iconButton('↑', 'Move up', () => move(q, -1)),
+        iconButton('↓', 'Move down', () => move(q, 1)),
+        canDuplicate ? iconButton('⧉', 'Duplicate', () => duplicate(q)) : null,
+        q.system ? null : iconButton('🗑', 'Delete', () => remove(q), true),
       ]),
     ]));
     return wrap;
   }
 
-  /** Tipos a los que puede cambiar la pregunta: los de su familia si es de fábrica, todos si es nueva. */
+  /** Types the question can change to: those of its family if it is a factory question, all of them if it is new. */
   function typeChoices(q) {
     if (!q.system) return state.customTypes;
     if (q.locked) return [q.type];
@@ -433,7 +433,7 @@
       list.textContent = '';
       q.options.forEach(function (opt, i) {
         const input = el('input', {
-          type: 'text', maxlength: 200, value: opt, placeholder: 'Opción ' + (i + 1), 'aria-label': 'Opción ' + (i + 1),
+          type: 'text', maxlength: 200, value: opt, placeholder: 'Option ' + (i + 1), 'aria-label': 'Option ' + (i + 1),
           oninput: (e) => { q.options[i] = e.target.value; setDirty(true); },
           onkeydown: function (e) {
             if (e.key === 'Enter') {
@@ -452,7 +452,7 @@
         list.appendChild(el('div', { className: 'opt' }, [
           el('span', { className: 'opt-glyph', 'aria-hidden': 'true', text: previewGlyph(q.type, i) }),
           input,
-          iconButton('×', 'Quitar opción ' + (i + 1), function () {
+          iconButton('×', 'Remove option ' + (i + 1), function () {
             q.options.splice(i, 1);
             setDirty(true);
             redraw(Math.max(0, i - 1));
@@ -463,19 +463,19 @@
       if (q.other && q.type !== 'select') {
         list.appendChild(el('div', { className: 'opt opt-other' }, [
           el('span', { className: 'opt-glyph', 'aria-hidden': 'true', text: previewGlyph(q.type, 0) }),
-          el('span', { className: 'opt-other-label', text: 'Otro…' }),
-          iconButton('×', 'Quitar la opción "Otro"', function () { q.other = false; setDirty(true); redraw(); }),
+          el('span', { className: 'opt-other-label', text: 'Other...' }),
+          iconButton('×', 'Remove the "Other" option', function () { q.other = false; setDirty(true); redraw(); }),
         ]));
       }
       adders.textContent = '';
       adders.appendChild(el('button', {
-        type: 'button', className: 'link-btn', text: 'Agregar opción',
+        type: 'button', className: 'link-btn', text: 'Add option',
         onclick: () => { q.options.push(''); setDirty(true); redraw(q.options.length - 1); },
       }));
       if (q.type !== 'select' && !q.other) {
-        adders.appendChild(el('span', { className: 'opt-or', text: 'o' }));
+        adders.appendChild(el('span', { className: 'opt-or', text: 'or' }));
         adders.appendChild(el('button', {
-          type: 'button', className: 'link-btn', text: 'agregar "Otro"',
+          type: 'button', className: 'link-btn', text: 'add "Other"',
           onclick: () => { q.other = true; setDirty(true); redraw(); },
         }));
       }
@@ -503,7 +503,7 @@
   }
 
   // -------------------------------------------------------------------------
-  // Cambios en las preguntas
+  // Changes to the questions
   // -------------------------------------------------------------------------
 
   function activate(id) {
@@ -515,7 +515,7 @@
   function addQuestion(sectionId) {
     const id = newId();
     const list = state.config.questions;
-    // Se inserta después de la última pregunta de esa sección.
+    // It is inserted after the last question of that section.
     let index = list.length;
     for (let i = list.length - 1; i >= 0; i--) {
       if (list[i].section === sectionId) { index = i + 1; break; }
@@ -554,7 +554,7 @@
     focusId('q-' + q.id + '-label');
   }
 
-  /** Arrastrar y soltar: antes o después de otra pregunta, o al final de una sección. */
+  /** Drag and drop: before or after another question, or at the end of a section. */
   function moveTo(id, targetId, before, sectionId) {
     const list = state.config.questions;
     const item = list.filter((x) => x.id === id)[0];
@@ -578,7 +578,7 @@
   }
 
   function remove(q) {
-    if (!window.confirm('¿Eliminar la pregunta "' + q.label + '"? Las respuestas ya guardadas en la hoja se conservan.')) return;
+    if (!window.confirm('Delete the question "' + q.label + '"? The answers already saved in the sheet are kept.')) return;
     state.config.questions.splice(state.config.questions.indexOf(q), 1);
     if (state.active === q.id) state.active = null;
     setDirty(true);
@@ -588,14 +588,14 @@
   function setDirty(value) {
     state.dirty = value;
     $('#save-bar').classList.toggle('dirty', value);
-    $('#save-status').textContent = value ? 'Hay cambios sin guardar.' : 'Sin cambios.';
+    $('#save-status').textContent = value ? 'There are unsaved changes.' : 'No changes.';
   }
 
   async function save() {
     if (state.saving) return;
     state.saving = true;
     $('#btn-save').disabled = true;
-    $('#save-status').textContent = 'Guardando…';
+    $('#save-status').textContent = 'Saving...';
     try {
       const config = Object.assign({}, state.config, {
         notifyEmails: $('#a-emails').value.split(/[\n,;]+/).map((e) => e.trim()).filter(Boolean),
@@ -605,9 +605,9 @@
       $('#a-emails').value = state.config.notifyEmails.join('\n');
       setDirty(false);
       render();
-      $('#save-status').textContent = 'Cambios guardados. El formulario ya los muestra.';
+      $('#save-status').textContent = 'Changes saved. The form already shows them.';
     } catch (err) {
-      $('#save-status').textContent = 'No se guardó: ' + err.message;
+      $('#save-status').textContent = 'Not saved: ' + err.message;
     } finally {
       state.saving = false;
       $('#btn-save').disabled = false;
@@ -638,7 +638,7 @@
     try {
       await api('adminChangePassword', { current: $('#a-current').value, next: $('#a-next').value });
       e.target.reset();
-      msg.textContent = 'Contraseña actualizada.';
+      msg.textContent = 'Password updated.';
     } catch (err) {
       msg.textContent = err.message;
     }
@@ -648,7 +648,7 @@
   $('#btn-save').addEventListener('click', save);
   $('#btn-logout').addEventListener('click', function () {
     api('adminLogout', {}).catch(() => null);
-    showLogin('Sesión cerrada.');
+    showLogin('Signed out.');
   });
   window.addEventListener('beforeunload', function (e) {
     if (state.dirty) {

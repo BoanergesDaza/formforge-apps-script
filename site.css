@@ -1,8 +1,8 @@
-/* Academia Ejemplo — landing. Dirección: "la página es el objeto" (la carátula).
-   Colores tomados del banner de la marca y del formulario: marino y dorado. */
+/* Example Academy - landing page. Direction: "the page is the object" (the cover page).
+   Colors taken from the brand banner and the form: wine and gold. */
 
 :root {
-  /* Paleta del banner: vino, dorado y crema de biblioteca antigua. */
+  /* Banner palette: wine, gold and cream of an old library. */
   --bg: #fbf7ef;
   --surface: #f1e6d3;
   --ink: #2a1a1e;
@@ -64,10 +64,10 @@ a { color: var(--accent); text-underline-offset: 0.18em; }
 
 .wrap { width: calc(100% - 2 * var(--m)); margin-inline: auto; }
 
-/* Fotos: un mismo tono cálido (sepia suave) para que combinen con el banner */
+/* Photos: one warm tone (soft sepia) so they match the banner */
 .sheet-photo, .moment img, .faq-photos img, .stamp { filter: sepia(.72) saturate(1.05) contrast(1.05) brightness(.97); object-fit: cover; }
 
-/* Botones: rectángulo plano, esquinas rectas */
+/* Buttons: flat rectangle, square corners */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -86,7 +86,7 @@ a { color: var(--accent); text-underline-offset: 0.18em; }
 .link { color: inherit; font-size: var(--step-body); }
 .link:hover { color: var(--accent); }
 
-/* ---------- Portada ---------- */
+/* ---------- Cover ---------- */
 .hero {
   --hero-w: min(100%, 1120px, calc(30svh * 2000 / 492));
   position: relative;
@@ -101,11 +101,11 @@ a { color: var(--accent); text-underline-offset: 0.18em; }
     radial-gradient(ellipse 80% 60% at 50% 0%, #6b2536 0%, rgba(107, 37, 54, 0) 70%),
     linear-gradient(180deg, #4a1a26, #35111b);
 }
-/* Banner de la marca, entero y sin recortes: su altura no pasa del 30 % de la pantalla. */
+/* Brand banner, whole and uncropped: its height never exceeds 30 % of the screen. */
 .banner-wrap { flex: none; width: var(--hero-w); margin-top: clamp(8px, 1.6svh, 16px); }
 .banner { display: block; width: 100%; max-width: none; height: auto; }
 
-/* Carátula: marco de diploma, papel crema y doble filete dorado */
+/* Title card: diploma frame, cream paper and double gold rule */
 .hero-card {
   position: relative;
   flex: 1 1 auto;
@@ -198,7 +198,7 @@ a { color: var(--accent); text-underline-offset: 0.18em; }
 .hero-foot { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 14px 32px; margin-top: clamp(2px, 1svh, 10px); }
 .hero-foot .btn { min-height: 54px; padding: 0 36px; letter-spacing: 0.04em; box-shadow: 0 10px 24px -12px rgba(91, 29, 45, .9); }
 
-/* ---------- Servicios: índice fijo y hojas de color ---------- */
+/* ---------- Services: sticky index and colored sheets ---------- */
 .services { padding-top: var(--gap-section); }
 .services-grid { display: grid; grid-template-columns: repeat(12, 1fr); column-gap: 24px; align-items: start; }
 .services-index { grid-column: 1 / 5; position: sticky; top: 40px; padding-right: 24px; }
@@ -232,7 +232,7 @@ a { color: var(--accent); text-underline-offset: 0.18em; }
 .sheet-photo { grid-column: 2; grid-row: 2; width: 100%; height: 100%; min-height: 360px; }
 .sheet--paper .sheet-photo { object-position: 50% 0; }
 
-/* ---------- Hoja impresa de modalidades ---------- */
+/* ---------- Printed sheet of types of work ---------- */
 .menu {
   margin-top: var(--gap-section);
   padding: var(--gap-section) var(--m);
@@ -264,7 +264,7 @@ a { color: var(--accent); text-underline-offset: 0.18em; }
 .scallop--top { top: -23px; }
 .scallop--bottom { bottom: -23px; transform: scaleY(-1); }
 
-/* ---------- Cómo trabajamos ---------- */
+/* ---------- How we work ---------- */
 .steps { padding-top: var(--gap-section); overflow: hidden; }
 .steps-head { display: flex; justify-content: space-between; align-items: end; gap: 24px; }
 .steps-nav { display: flex; gap: 8px; }
@@ -307,7 +307,7 @@ a { color: var(--accent); text-underline-offset: 0.18em; }
 .moment p { margin-top: 12px; min-height: 4.5em; }
 .moment img { margin-top: var(--gap); aspect-ratio: 4 / 5; width: 100%; height: auto; }
 
-/* ---------- Carta de reserva ---------- */
+/* ---------- Confidentiality letter ---------- */
 .letter-section {
   margin-top: var(--gap-section);
   padding: 120px var(--m);
@@ -341,7 +341,7 @@ a { color: var(--accent); text-underline-offset: 0.18em; }
 }
 .stub-mail { font-size: var(--step-lead); color: var(--ink); }
 
-/* ---------- Preguntas ---------- */
+/* ---------- Questions ---------- */
 .faq { padding-top: var(--gap-section); overflow: hidden; }
 .faq-grid { display: grid; grid-template-columns: 5fr 1fr 6fr; }
 .faq-text { grid-column: 1; padding-bottom: 80px; }
@@ -385,7 +385,7 @@ a { color: var(--accent); text-underline-offset: 0.18em; }
   border: 8px solid var(--bg);
 }
 
-/* ---------- Cierre: la carátula ---------- */
+/* ---------- Closing: the cover page ---------- */
 .reply {
   padding-top: 120px;
   background: var(--field);
@@ -417,7 +417,7 @@ a { color: var(--accent); text-underline-offset: 0.18em; }
   margin-bottom: -60px;
   background: var(--bg);
   color: var(--ink);
-  /* El borde inferior queda recortado por la sección: el botón sube por encima del recorte. */
+  /* The bottom edge is clipped by the section: the button rises above the clipping. */
   padding: clamp(28px, 4vw, 56px) clamp(28px, 4vw, 56px) calc(clamp(28px, 4vw, 56px) + 80px);
   display: flex;
   flex-direction: column;
@@ -457,7 +457,7 @@ a { color: var(--accent); text-underline-offset: 0.18em; }
 .cover-action:hover { background: var(--accent-hover); box-shadow: inset 0 0 0 1px var(--gold-soft); }
 .cover-action:active { transform: scale(.98); }
 
-/* ---------- Reverso ---------- */
+/* ---------- Back ---------- */
 .back { background: var(--field); padding: 120px var(--m) var(--m); }
 .postcard {
   position: relative;
@@ -485,7 +485,7 @@ a { color: var(--accent); text-underline-offset: 0.18em; }
 .credits { margin: 12px auto 0; max-width: 75ch; font-size: var(--step-small); color: var(--muted); text-align: center; }
 .credits a { color: inherit; }
 
-/* ---------- Entradas ---------- */
+/* ---------- Reveals ---------- */
 .js [data-reveal], .js .sheet-text, .js .cover {
   opacity: 0;
   translate: 0 24px;
@@ -494,7 +494,7 @@ a { color: var(--accent); text-underline-offset: 0.18em; }
 }
 .js .is-in { opacity: 1; translate: 0 0; }
 
-/* ---------- Teléfono ---------- */
+/* ---------- Phone ---------- */
 @media (max-width: 760px) {
   .hero { --hero-w: 100%; }
   .hero-card { min-width: 0; }

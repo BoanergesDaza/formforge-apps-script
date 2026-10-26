@@ -1,6 +1,6 @@
 /**
- * Academia Ejemplo — landing.
- * Entradas por sección, fila de pasos con progreso y la carátula en vivo.
+ * Example Academy - landing page.
+ * Reveal animations, row of steps with progress and the live cover page.
  */
 (function () {
   'use strict';
@@ -8,7 +8,7 @@
   const root = document.documentElement;
   root.classList.add('js');
 
-  // Entradas: cada parte de una sección aparece una vez, escalonada.
+  // Reveals: each part of a section appears once, staggered.
   const groups = [
     '[data-reveal]',
     '.sheet-text',
@@ -31,10 +31,10 @@
   } else {
     targets.forEach((el) => el.classList.add('is-in'));
   }
-  // Red de seguridad: nada queda oculto si el observador no dispara.
+  // Safety net: nothing stays hidden if the observer never fires.
   setTimeout(() => targets.forEach((el) => el.classList.add('is-in')), 1500);
 
-  // Índice fijo de servicios: marca la etapa que está a la vista.
+  // Sticky services index: highlights the stage that is in view.
   const indexLinks = Array.from(document.querySelectorAll('.services-index a'));
   if ('IntersectionObserver' in window && indexLinks.length) {
     const stageObserver = new IntersectionObserver(function (entries) {
@@ -46,7 +46,7 @@
     document.querySelectorAll('.sheet').forEach((s) => stageObserver.observe(s));
   }
 
-  // Fila de pasos: botones, barra de progreso y avance automático.
+  // Row of steps: buttons, progress bar and automatic advance.
   const row = document.querySelector('.row');
   const bar = document.querySelector('.progress span');
   if (row && bar) {
@@ -65,9 +65,9 @@
       });
     });
 
-    // Avance automático: pasa un momento cada pocos segundos y vuelve al inicio al llegar al final.
-    // Se detiene con el cursor o el foco encima, con la pestaña oculta, fuera de pantalla,
-    // si la persona prefiere menos movimiento, o con el botón de pausa.
+    // Automatic advance: moves one step every few seconds and returns to the start at the end.
+    // It stops with the cursor or focus on it, with the tab hidden, off screen,
+    // if the person prefers reduced motion, or with the pause button.
     const toggle = document.getElementById('steps-toggle');
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const auto = { userPaused: reduce, hover: false, visible: false, timer: null };
@@ -86,7 +86,7 @@
       if (toggle) {
         toggle.classList.toggle('is-paused', paused);
         toggle.setAttribute('aria-pressed', String(paused));
-        toggle.setAttribute('aria-label', paused ? 'Reanudar el movimiento automático' : 'Pausar el movimiento automático');
+        toggle.setAttribute('aria-label', paused ? 'Resume the automatic movement' : 'Pause the automatic movement');
       }
       sync();
     };
@@ -107,8 +107,8 @@
     setPaused(auto.userPaused);
   }
 
-  // Fotos editables desde el panel admin: cada <img data-slot> cambia por la que se subió.
-  // La última lista se guarda en el navegador para que la siguiente visita no parpadee.
+  // Photos editable from the admin panel: each <img data-slot> is replaced by the uploaded one.
+  // The latest list is kept in the browser so the next visit does not flicker.
   const IMAGES_KEY = 'form-images';
   const slotImages = Array.from(document.querySelectorAll('img[data-slot]'));
   const applyImages = function (map) {
@@ -122,15 +122,15 @@
       if (img.getAttribute('src') === url) return;
       img.onerror = function () { img.onerror = null; img.src = img.dataset.defaultSrc; };
       img.src = url;
-      img.alt = ''; // el texto alternativo original describía la foto anterior
+      img.alt = ''; // the original alt text described the previous photo
     });
   };
-  if (slotImages.length && window.APP_CONFIG && window.APP_CONFIG.SCRIPT_URL && !/^PEGAR_/.test(window.APP_CONFIG.SCRIPT_URL)) {
+  if (slotImages.length && window.APP_CONFIG && window.APP_CONFIG.SCRIPT_URL && !/^PASTE_/.test(window.APP_CONFIG.SCRIPT_URL)) {
     try {
       const cached = JSON.parse(localStorage.getItem(IMAGES_KEY) || 'null');
       if (cached) applyImages(cached);
     } catch (err) {
-      // Sin almacenamiento: se usa solo la respuesta del servidor.
+      // No storage: only the server response is used.
     }
     fetch(window.APP_CONFIG.SCRIPT_URL, {
       method: 'POST',
@@ -146,28 +146,28 @@
       .catch(() => null);
   }
 
-  // La carátula en vivo.
+  // The live cover page.
   const coverForm = document.querySelector('.cover-controls');
   if (coverForm) coverForm.addEventListener('submit', (e) => e.preventDefault());
   const fields = {
-    titulo: document.getElementById('c-titulo'),
-    modalidad: document.getElementById('c-modalidad'),
-    nivel: document.getElementById('c-nivel'),
-    ciudad: document.getElementById('c-ciudad'),
+    title: document.getElementById('c-title'),
+    mode: document.getElementById('c-mode'),
+    level: document.getElementById('c-level'),
+    city: document.getElementById('c-city'),
   };
   const out = {
-    titulo: document.getElementById('out-titulo'),
-    modalidad: document.getElementById('out-modalidad'),
-    nivel: document.getElementById('out-nivel'),
-    ciudad: document.getElementById('out-ciudad'),
+    title: document.getElementById('out-title'),
+    mode: document.getElementById('out-mode'),
+    level: document.getElementById('out-level'),
+    city: document.getElementById('out-city'),
   };
-  document.getElementById('out-anio').textContent = String(new Date().getFullYear());
+  document.getElementById('out-year').textContent = String(new Date().getFullYear());
 
   function renderCover() {
-    out.titulo.textContent = fields.titulo.value.trim() || 'El título de tu trabajo';
-    out.modalidad.textContent = fields.modalidad.value;
-    out.nivel.textContent = fields.nivel.value;
-    out.ciudad.textContent = fields.ciudad.value;
+    out.title.textContent = fields.title.value.trim() || 'The title of your work';
+    out.mode.textContent = fields.mode.value;
+    out.level.textContent = fields.level.value;
+    out.city.textContent = fields.city.value;
   }
   Object.values(fields).forEach((f) => f && f.addEventListener('input', renderCover));
   renderCover();

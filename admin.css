@@ -1,4 +1,4 @@
-/* Panel admin: se apoya en styles.css (formulario) y agrega solo lo propio del editor. */
+/* Admin panel: relies on styles.css (form) and adds only what is specific to the editor. */
 
 .admin-bar { background: var(--brand); color: var(--brand-ink); padding: 20px 0; }
 .admin-bar-inner { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
@@ -22,7 +22,7 @@ input[type=password] {
 .links { display: flex; gap: 24px; flex-wrap: wrap; margin: 0; }
 .links a { color: var(--brand); }
 
-/* Fotos del sitio */
+/* Site photos */
 .images { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; margin-top: 14px; }
 .img-tile { margin: 0; display: grid; gap: 8px; align-content: start; }
 .img-tile img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); }
@@ -31,7 +31,7 @@ input[type=password] {
 .file-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 #images-msg.ok { color: var(--ok); }
 
-/* Secciones y tarjetas de pregunta, al estilo de Google Forms */
+/* Sections and question cards, Google Forms style */
 .sec { margin-bottom: 28px; }
 .sec-head {
   background: var(--card);
@@ -98,7 +98,7 @@ input[type=password] {
 
 .q-main { flex: 1; min-width: 0; padding: 14px 16px 14px 4px; }
 
-/* Vista compacta */
+/* Compact view */
 .q-view { cursor: pointer; display: grid; gap: 4px; }
 .q-view:focus-visible { outline: 3px solid var(--brand); outline-offset: 3px; border-radius: 6px; }
 .q-title { font-weight: 500; overflow-wrap: anywhere; }
@@ -110,7 +110,7 @@ input[type=password] {
 .tag { font-size: 14px; color: var(--muted); }
 .tag.off { color: var(--error); }
 
-/* Editor de la pregunta activa */
+/* Editor of the active question */
 .q-edit { display: grid; gap: 14px; }
 .q-top { display: grid; grid-template-columns: 1fr minmax(180px, 240px); gap: 12px; align-items: end; }
 .q-title-input, .q-help-input, .opt input {
@@ -164,7 +164,7 @@ input[type=password] {
 .icon-btn.danger:hover:not(:disabled) { color: var(--error); }
 .icon-btn:disabled { opacity: .35; cursor: default; }
 
-/* Interruptores */
+/* Switches */
 .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; min-height: 40px; }
 .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .switch-ui {
@@ -217,7 +217,7 @@ input[type=password] {
 
 input:disabled, select:disabled { background: var(--bg); color: var(--muted); }
 
-/* Barra de guardado fija */
+/* Fixed save bar */
 .save-bar {
   position: fixed;
   left: 0;

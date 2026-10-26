@@ -1,69 +1,71 @@
 /**
- * Academia Ejemplo — backend del formulario de solicitudes.
+ * Example Academy - backend of the request form.
  *
- * Web App de Google Apps Script. El formulario HTML lo llama en este orden:
- *   1. getConfig     lee las preguntas activas (las define el panel admin).
- *   2. initRequest   busca o crea la carpeta del usuario y sus subcarpetas.
- *   3. startUpload   abre una sesión de subida reanudable de Drive para un archivo.
- *   4. uploadChunk   reenvía un fragmento del archivo a esa sesión (uploadStatus para reanudar).
- *   5. submit        valida las respuestas, registra la fila en el Sheet y avisa al admin.
+ * Google Apps Script Web App. The HTML form calls it in this order:
+ *   1. getConfig     reads the active questions (they are defined in the admin panel).
+ *   2. initRequest   finds or creates the user's folder and its subfolders.
+ *   3. startUpload   opens a resumable Drive upload session for one file.
+ *   4. uploadChunk   forwards one chunk of the file to that session (uploadStatus resumes it).
+ *   5. submit        validates the answers, appends the row to the Sheet and notifies the admin.
  *
- * El panel admin (admin.html) usa adminLogin, adminGetConfig, adminSaveConfig,
- * adminChangePassword y adminLogout.
+ * The admin panel (admin.html) uses adminLogin, adminGetConfig, adminSaveConfig,
+ * adminChangePassword and adminLogout.
  *
- * Los archivos se suben por fragmentos porque una petición a Apps Script
- * no puede superar ~50 MB y la guía/avance admiten hasta 1 GB.
+ * Files are uploaded in chunks because a request to Apps Script cannot exceed ~50 MB
+ * and the guide / draft fields accept up to 1 GB.
  *
- * Propiedades del script (las crea setup()):
- *   ROOT_FOLDER_ID       carpeta principal en Drive
- *   SPREADSHEET_ID       hoja donde se registran las solicitudes
- *   ADMIN_SALT, ADMIN_PASSWORD_HASH   contraseña del panel admin
- * La configuración editable (preguntas, correos de aviso) vive en la pestaña
- * oculta "Configuración" de esa hoja.
+ * Script properties (created by setup()):
+ *   ROOT_FOLDER_ID       main folder in Drive
+ *   SPREADSHEET_ID       spreadsheet where requests are recorded
+ *   ADMIN_SALT, ADMIN_PASSWORD_HASH   admin panel password
+ * The editable configuration (questions, notification emails) lives in the
+ * hidden "Config" tab of that spreadsheet.
  */
 
 const MB = 1024 * 1024;
 const GB = 1024 * MB;
 
-// Tamaño de cada fragmento. Drive exige múltiplos de 256 KB.
+// Size of each chunk. Drive requires multiples of 256 KB.
 const CHUNK_SIZE = 8 * MB;
 
-const ROOT_FOLDER_NAME = 'Solicitudes - Carpeta principal';
-const SPREADSHEET_NAME = 'Solicitudes - Respuestas';
-const SHEET_NAME = 'Respuestas';
-const CONFIG_SHEET_NAME = 'Configuración';
+const ROOT_FOLDER_NAME = 'Requests - Main folder';
+const SPREADSHEET_NAME = 'Requests - Responses';
+const SHEET_NAME = 'Responses';
+const CONFIG_SHEET_NAME = 'Config';
 const TIMEZONE = 'America/La_Paz';
-const CACHE_TTL = 6 * 60 * 60; // máximo que permite CacheService
+const CACHE_TTL = 6 * 60 * 60; // the maximum CacheService allows
 const CONFIG_CACHE_TTL = 10 * 60;
 const ADMIN_SESSION_TTL = 2 * 60 * 60;
 const ADMIN_MAX_FAILS = 20;
 const DRIVE_UPLOAD_URL = 'https://www.googleapis.com/upload/drive/v3/files';
+// Country code added to local phone numbers typed without "+". 591 = Bolivia.
+const PHONE_COUNTRY_CODE = '591';
 
-// Fotos del sitio que el panel admin puede cambiar. Los ids coinciden con data-slot en index.html.
+// Site photos the admin panel can change. The ids match the data-slot attributes in index.html.
 const SITE_SLOTS = [
-  'servicios-1', 'servicios-2', 'servicios-3', 'servicios-4',
-  'paso-1', 'paso-2', 'paso-3', 'paso-4', 'paso-5', 'paso-6',
-  'faq-grande', 'faq-chica', 'sello',
+  'services-1', 'services-2', 'services-3', 'services-4',
+  'step-1', 'step-2', 'step-3', 'step-4', 'step-5', 'step-6',
+  'faq-large', 'faq-small', 'stamp',
 ];
-const SITE_IMAGES_FOLDER = 'Sitio - Imágenes';
+const SITE_IMAGES_FOLDER = 'Site - Images';
 const MAX_SITE_IMAGE = 6 * MB;
 
 const SUBFOLDERS = {
-  identidad: 'Identidad',
-  guia: 'Guia',
-  avance: 'Avance actual',
-  pago: 'Pago',
+  identity: 'Identity',
+  guide: 'Guide',
+  draft: 'Current draft',
+  payment: 'Payment',
 };
 
 const EXT_IMG_PDF = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'];
 const EXT_DOCS = EXT_IMG_PDF.concat(['doc', 'docx']);
 
-// Límites de cada campo de archivo. maxTotal es por campo. Se envían al formulario con getConfig.
+// Limits of each file field. maxTotal is per field. They are sent to the form with getConfig.
 const FILE_RULES = {
-  identidad: { extensions: EXT_IMG_PDF, maxTotal: 10 * MB, maxFiles: 2 },
-  guia: { extensions: EXT_DOCS, maxTotal: 1 * GB, maxFiles: 20 },
-  avance: { extensions: EXT_DOCS, maxTotal: 1 * GB, maxFiles: 20 },
-  pago: { extensions: EXT_IMG_PDF, maxTotal: 10 * MB, maxFiles: 1 },
+  identity: { extensions: EXT_IMG_PDF, maxTotal: 10 * MB, maxFiles: 2 },
+  guide: { extensions: EXT_DOCS, maxTotal: 1 * GB, maxFiles: 20 },
+  draft: { extensions: EXT_DOCS, maxTotal: 1 * GB, maxFiles: 20 },
+  payment: { extensions: EXT_IMG_PDF, maxTotal: 10 * MB, maxFiles: 1 },
 };
 
 const MIME_BY_EXT = {
@@ -78,44 +80,32 @@ const MIME_BY_EXT = {
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 };
 
-// Tipos que el admin puede usar en preguntas nuevas.
+// Types the admin can use in new questions.
 const CUSTOM_TYPES = ['text', 'textarea', 'number', 'date', 'select', 'radio', 'checkbox'];
 const CHOICE_TYPES = ['select', 'radio', 'checkbox'];
 const MAX_QUESTIONS = 60;
 const MAX_OPTIONS = 40;
 
 /**
- * Configuración inicial: copia del Google Form original.
- * system: pregunta de fábrica (no se borra ni cambia de tipo).
- * locked: además no se puede desactivar ni volver opcional (arma la carpeta del usuario).
+ * Initial configuration: the factory questions.
+ * system: factory question (cannot be deleted, and its type only changes within its family).
+ * locked: also cannot be disabled or made optional (it builds the user's folder name).
  */
-// Sube cuando cambian las preguntas de fábrica: getConfig_ actualiza las ya guardadas (ver migrateConfig_).
+// Bump when the factory questions change: getConfig_ updates the stored ones (see migrateConfig_).
 const CONFIG_VERSION = 3;
 
-// Sugerencias que el formulario muestra mientras se escribe. El campo sigue siendo libre.
+// Suggestions the form shows while typing. The field is still free text. Sample data: replace with yours.
 const SUGGESTIONS = {
-  universidades: [
-    'Universidad Mayor de San Andrés (UMSA)', 'Universidad Mayor de San Simón (UMSS)',
-    'Universidad Autónoma Gabriel René Moreno (UAGRM)', 'Universidad San Francisco Xavier de Chuquisaca (USFX)',
-    'Universidad Técnica de Oruro (UTO)', 'Universidad Autónoma Tomás Frías (UATF)',
-    'Universidad Autónoma Juan Misael Saracho (UAJMS)', 'Universidad Técnica del Beni (UTB)',
-    'Universidad Amazónica de Pando (UAP)', 'Universidad Pública de El Alto (UPEA)',
-    'Universidad Nacional Siglo XX (UNSXX)', 'Universidad Católica Boliviana San Pablo (UCB)',
-    'Universidad Privada Boliviana (UPB)', 'Universidad Privada del Valle (UNIVALLE)',
-    'Universidad Privada de Santa Cruz de la Sierra (UPSA)', 'Universidad Privada Domingo Savio (UPDS)',
-    'Universidad de Aquino Bolivia (UDABOL)', 'Universidad Privada Franz Tamayo (UNIFRANZ)',
-    'Universidad Salesiana de Bolivia (USB)', 'Universidad NUR',
-    'Universidad Técnica Privada Cosmos (UNITEPC)', 'Universidad Tecnológica Privada de Santa Cruz (UTEPSA)',
-    'Universidad Evangélica Boliviana (UEB)', 'Universidad Privada Abierta Latinoamericana (UPAL)',
-    'Universidad Cristiana de Bolivia (UCEBOL)', 'Universidad Loyola',
-    'Escuela Militar de Ingeniería (EMI)', 'Universidad Policial Antonio José de Sucre (UNIPOL)',
+  universities: [
+    'Massachusetts Institute of Technology (MIT)', 'Stanford University', 'University of Oxford', 'University of Cambridge',
+    'University of Toronto', 'Universidad Nacional Autónoma de México (UNAM)', 'Universidad de Buenos Aires (UBA)',
+    'Universidade de São Paulo (USP)', 'Universidad de Chile', 'Universidad Mayor de San Andrés (UMSA)',
+    'Universidad Mayor de San Simón (UMSS)', 'Universidad Autónoma Gabriel René Moreno (UAGRM)',
   ],
-  ciudades: [
-    'La Paz, Bolivia', 'El Alto, Bolivia', 'Santa Cruz de la Sierra, Bolivia', 'Cochabamba, Bolivia',
-    'Sucre, Bolivia', 'Oruro, Bolivia', 'Potosí, Bolivia', 'Tarija, Bolivia', 'Trinidad, Bolivia',
-    'Cobija, Bolivia', 'Montero, Bolivia', 'Warnes, Bolivia', 'Quillacollo, Bolivia', 'Sacaba, Bolivia',
-    'Yacuiba, Bolivia', 'Riberalta, Bolivia', 'Villazón, Bolivia', 'Tupiza, Bolivia', 'Camiri, Bolivia',
-    'Llallagua, Bolivia', 'Uyuni, Bolivia', 'Villa Tunari, Bolivia',
+  cities: [
+    'La Paz, Bolivia', 'Santa Cruz de la Sierra, Bolivia', 'Cochabamba, Bolivia', 'Buenos Aires, Argentina',
+    'São Paulo, Brazil', 'Santiago, Chile', 'Bogotá, Colombia', 'Mexico City, Mexico', 'Lima, Peru',
+    'Madrid, Spain', 'London, United Kingdom', 'New York, United States', 'Toronto, Canada',
   ],
 };
 
@@ -123,114 +113,114 @@ const DEFAULT_CONFIG = {
   version: CONFIG_VERSION,
   notifyEmails: [],
   sections: [
-    { id: 's1', title: 'Datos personales' },
-    { id: 's2', title: 'Datos académicos y del trabajo' },
-    { id: 's3', title: 'Documentación y Cierre' },
+    { id: 's1', title: 'Personal details' },
+    { id: 's2', title: 'Academic and project details' },
+    { id: 's3', title: 'Documents and wrap-up' },
   ],
   questions: [
-    { id: 'nombre', section: 's1', type: 'text', label: 'Nombre y Apellido', system: true, locked: true },
-    { id: 'celular', section: 's1', type: 'tel', label: 'Número de celular', system: true },
-    { id: 'ci', section: 's1', type: 'ci', label: 'Número de carnet de identidad', system: true, locked: true },
+    { id: 'fullName', section: 's1', type: 'text', label: 'First and last name', system: true, locked: true },
+    { id: 'phone', section: 's1', type: 'tel', label: 'Mobile phone number', system: true },
+    { id: 'idNumber', section: 's1', type: 'idnumber', label: 'ID number', system: true, locked: true },
     {
-      id: 'extension', section: 's1', type: 'select', label: 'Extensión', system: true, locked: true,
-      options: ['SC', 'LP', 'CB', 'CH', 'BN', 'OR', 'PT', 'TJ', 'PA'],
+      id: 'idExt', section: 's1', type: 'select', label: 'ID issuing country', system: true, locked: true,
+      options: ['BO', 'AR', 'BR', 'CL', 'CO', 'MX', 'PE', 'ES', 'US', 'GB'],
     },
     {
-      id: 'identidad', section: 's1', type: 'file', category: 'identidad', label: 'Fotografía carnet de identidad',
-      help: 'Puedes subir anverso y reverso. Tipos permitidos: PDF, PNG, JPG. Máximo 10 MB en total.', system: true, locked: true,
+      id: 'idPhoto', section: 's1', type: 'file', category: 'identity', label: 'ID photo',
+      help: 'You can upload the front and the back. Allowed types: PDF, PNG, JPG. Maximum 10 MB in total.', system: true, locked: true,
     },
     {
-      id: 'nivel', section: 's2', type: 'radio', label: 'Nivel académico', system: true,
-      options: ['Pregrado (Licenciatura o Ingenierías)', 'Diplomado', 'Especialidad', 'Posgrado (Maestría)', 'Doctorado'],
+      id: 'level', section: 's2', type: 'radio', label: 'Academic level', system: true,
+      options: ['Bachelor degree', 'Diploma', 'Specialization', 'Master degree', 'Doctorate'],
     },
     {
-      id: 'universidad', section: 's2', type: 'text', label: 'Universidad / institución donde está cursando', system: true,
-      suggest: 'universidades',
-      help: 'Empieza a escribir y elige de la lista. Si tu universidad no aparece, escribe su nombre completo.',
+      id: 'university', section: 's2', type: 'text', label: 'University / institution where you are studying', system: true,
+      suggest: 'universities',
+      help: 'Start typing and pick from the list. If your university is not listed, type its full name.',
     },
     {
-      id: 'modalidad', section: 's2', type: 'radio', label: 'Modalidad', system: true,
-      options: ['Proyecto de grado', 'Monografía', 'Perfil de tesis', 'Tesis', 'Artículo'],
+      id: 'workType', section: 's2', type: 'radio', label: 'Type of work', system: true,
+      options: ['Final project', 'Monograph', 'Thesis proposal', 'Thesis', 'Article'],
     },
     {
-      id: 'datos', section: 's2', type: 'radio', label: 'Indique si quiere datos fidedignos o ficticios para su documento.', system: true,
-      options: ['Fidedignos', 'Ficticios'],
+      id: 'language', section: 's2', type: 'radio', label: 'In which language is your document written?', system: true,
+      options: ['English', 'Spanish', 'Portuguese'],
     },
     {
-      id: 'estadoTitulo', section: 's2', type: 'radio', label: '¿Ya tienes definido el tema de tu trabajo?', system: true,
+      id: 'topicStatus', section: 's2', type: 'radio', label: 'Have you already defined the topic of your work?', system: true,
       options: [
-        'Ya tengo mi tema o título definido o aprobado',
-        'Aún no tengo tema: quiero que me propongan opciones para elegir',
-        'Aún no tengo tema: elijan ustedes el más conveniente para mi carrera',
+        'I already have my topic or title defined or approved',
+        'I do not have a topic yet: I would like you to propose options to choose from',
+        'I do not have a topic yet: please choose the most suitable one for my degree',
       ],
     },
     {
-      id: 'titulo', section: 's2', type: 'textarea', label: 'Título tentativo o idea central del trabajo', system: true,
-      help: 'Si ya tienes el título, escríbelo completo como te lo aprobaron. Si aún no, cuéntanos en una o dos frases el tema que te interesa o el problema que quieres resolver (por ejemplo: "gestión de residuos en hospitales de Santa Cruz"). Si todavía no tienes ninguna idea, escribe ND.',
+      id: 'title', section: 's2', type: 'textarea', label: 'Tentative title or central idea of the work', system: true,
+      help: 'If you already have the title, write it in full as it was approved. If not, tell us in one or two sentences the topic you are interested in or the problem you want to solve (for example: "waste management in hospitals of Santa Cruz"). If you have no idea yet, write N/A.',
     },
     {
-      id: 'institucion', section: 's2', type: 'textarea', label: 'Institución, empresa o contexto de estudio', system: true,
-      help: '¿En qué empresa, institución, colegio, universidad u hospital se llevará a cabo la investigación? Ej. Colegio Alemán, Hospital General, Banco Mercantil. Si es un estudio teórico, escribe ND.',
+      id: 'institution', section: 's2', type: 'textarea', label: 'Institution, company or study context', system: true,
+      help: 'In which company, institution, school, university or hospital will the research take place? E.g. German School, General Hospital, Mercantil Bank. If it is a theoretical study, write N/A.',
     },
     {
-      id: 'ciudad', section: 's2', type: 'place', label: 'Ciudad y país de aplicación', system: true, suggest: 'ciudades',
-      help: 'Escribe la ciudad y el país, por ejemplo: Santa Cruz de la Sierra, Bolivia. Solo letras.',
+      id: 'city', section: 's2', type: 'place', label: 'City and country of application', system: true, suggest: 'cities',
+      help: 'Type the city and the country, for example: Santa Cruz de la Sierra, Bolivia. Letters only.',
     },
     {
-      id: 'servicio', section: 's2', type: 'radio', label: 'Tipo de servicio que necesitas', system: true,
-      help: 'Elige el servicio principal. Si necesitas más de uno, cuéntanoslo en los comentarios del final.',
+      id: 'service', section: 's2', type: 'radio', label: 'Type of service you need', system: true,
+      help: 'Choose the main service. If you need more than one, tell us in the comments at the end.',
       options: [
-        'Elaboración completa del trabajo',
-        'Continuación o finalización de un avance previo',
-        'Corrección de observaciones del tutor o tribunal',
-        'Revisión de capítulos',
-        'Diseño metodológico y análisis de datos',
-        'Ajuste a la norma de formato académico',
-        'Reducción de plagio e IA (Turnitin)',
+        'Coaching through the whole work',
+        'Continuation or completion of a previous draft',
+        'Review of tutor or committee remarks',
+        'Chapter review',
+        'Methodological design and data analysis guidance',
+        'Formatting to the academic standard',
+        'Citation and similarity report review',
       ],
     },
     {
-      id: 'norma', section: 's2', type: 'radio', label: 'Norma de formato académico', system: true, other: true,
-      help: 'Seleccione el estándar de citación y presentación aplicable a su documento.',
+      id: 'style', section: 's2', type: 'radio', label: 'Academic format standard', system: true, other: true,
+      help: 'Select the citation and presentation standard that applies to your document.',
       options: ['APA7', 'ISO 690', 'Vancouver', 'Chicago', 'Harvard'],
     },
     {
-      id: 'paginas', section: 's2', type: 'pages', label: 'Extensión estimada (Cantidad aproximada de páginas)', system: true,
-      help: 'Ejemplo: 50-140 páginas, o según el reglamento de tu facultad.',
+      id: 'pages', section: 's2', type: 'pages', label: 'Estimated length (approximate number of pages)', system: true,
+      help: 'Example: 50-140 pages, or whatever your faculty regulations require.',
     },
     {
-      id: 'fechaLimite', section: 's2', type: 'date', label: 'Fecha límite o plazo estimado de entrega', system: true, futureOnly: true,
-      help: '¿Para qué fecha necesitas tener el borrador o documento final?',
+      id: 'deadline', section: 's2', type: 'date', label: 'Deadline or estimated delivery date', system: true, futureOnly: true,
+      help: 'By what date do you need the draft or the final document?',
     },
     {
-      id: 'guia', section: 's3', type: 'file', category: 'guia', label: 'Guía institucional, formato o reglamento de titulación', system: true,
-      help: 'Sube la guía de estructura de tu universidad para adaptarnos exactamente a los requisitos formales. Tipos permitidos: PDF, Word, PNG, JPG. Máximo 1 GB en total.',
+      id: 'guide', section: 's3', type: 'file', category: 'guide', label: 'Institutional guide, format or graduation regulations', system: true,
+      help: 'Upload the structure guide of your university so we can match the formal requirements exactly. Allowed types: PDF, Word, PNG, JPG. Maximum 1 GB in total.',
     },
     {
-      id: 'avance', section: 's3', type: 'file', category: 'avance', label: 'Avance actual o documento con observaciones', system: true,
-      help: 'Si ya tienes algo redactado o el informe de corrección de tu tutor, adjúntalo aquí. Tipos permitidos: PDF, Word, PNG, JPG. Máximo 1 GB en total.',
+      id: 'draft', section: 's3', type: 'file', category: 'draft', label: 'Current draft or document with remarks', system: true,
+      help: 'If you already have something written, or the correction report from your tutor, attach it here. Allowed types: PDF, Word, PNG, JPG. Maximum 1 GB in total.',
     },
     {
-      id: 'pago', section: 's3', type: 'file', category: 'pago', label: 'Comprobante de pago', system: true, required: false, enabled: false,
-      help: 'Tipos permitidos: PDF, PNG, JPG. Máximo 10 MB.',
+      id: 'payment', section: 's3', type: 'file', category: 'payment', label: 'Proof of payment', system: true, required: false, enabled: false,
+      help: 'Allowed types: PDF, PNG, JPG. Maximum 10 MB.',
     },
     {
-      id: 'comentarios', section: 's3', type: 'textarea', label: 'Comentarios o requerimientos adicionales', system: true,
-      help: 'Indica cualquier detalle clave sobre entregas intermedias, exigencias del tutor, etc.',
+      id: 'comments', section: 's3', type: 'textarea', label: 'Comments or additional requirements', system: true,
+      help: 'Give any key detail about intermediate deliveries, tutor requirements, etc.',
     },
   ],
 };
 
-// Columnas fijas de la hoja que no son preguntas.
+// Fixed columns of the sheet that are not questions.
 const META_COLUMNS = [
-  { key: '_timestamp', label: 'Marca temporal' },
-  { key: '_estado', label: 'ESTADO' },
-  { key: '_detalle', label: 'DETALLE ESTADO' },
-  { key: '_carpeta', label: 'Carpeta del usuario' },
-  { key: '_requestId', label: 'ID solicitud' },
+  { key: '_timestamp', label: 'Timestamp' },
+  { key: '_status', label: 'STATUS' },
+  { key: '_detail', label: 'STATUS DETAIL' },
+  { key: '_folder', label: 'User folder' },
+  { key: '_requestId', label: 'Request ID' },
 ];
 
-/** Error con mensaje apto para mostrar al usuario. */
+/** Error with a message that is safe to show to the user. */
 class UserError extends Error {
   constructor(message, code) {
     super(message);
@@ -256,18 +246,18 @@ const ACTIONS = {
 };
 
 // ---------------------------------------------------------------------------
-// Entradas del Web App
+// Web App entry points
 // ---------------------------------------------------------------------------
 
 function doGet() {
-  return json_({ ok: true, data: { service: 'form-solicitudes' } });
+  return json_({ ok: true, data: { service: 'request-form' } });
 }
 
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
     if (!Object.prototype.hasOwnProperty.call(ACTIONS, body.action)) {
-      throw new UserError('Acción no válida.');
+      throw new UserError('Invalid action.');
     }
     return json_({ ok: true, data: ACTIONS[body.action](body) });
   } catch (err) {
@@ -275,16 +265,16 @@ function doPost(e) {
       return json_({ ok: false, error: err.message, code: err.code });
     }
     console.error(err && err.stack ? err.stack : err);
-    // RETRY: error transitorio, el cliente puede reintentar.
-    return json_({ ok: false, error: 'Error temporal del servidor. Intenta de nuevo.', code: 'RETRY' });
+    // RETRY: transient error, the client may try again.
+    return json_({ ok: false, error: 'Temporary server error. Please try again.', code: 'RETRY' });
   }
 }
 
 // ---------------------------------------------------------------------------
-// Acciones públicas
+// Public actions
 // ---------------------------------------------------------------------------
 
-/** Preguntas activas para el formulario. No incluye los correos de aviso. */
+/** Active questions for the form. Does not include the notification emails. */
 function getConfig() {
   const config = getConfig_();
   const fileRules = {};
@@ -307,21 +297,21 @@ function getConfig() {
 }
 
 function initRequest(body) {
-  if (body.website) throw new UserError('Solicitud rechazada.'); // honeypot anti-spam
+  if (body.website) throw new UserError('Request rejected.'); // anti-spam honeypot
 
   const config = getConfig_();
-  const nombre = cleanName_(text_(body.nombre, 'Nombre y Apellido', 120));
-  const ci = ciValue_(body.ci);
-  const extension = choice_(body.extension, questionById_(config, 'extension').options, 'Extensión de carnet');
+  const fullName = cleanName_(text_(body.fullName, 'First and last name', 120));
+  const idNumber = idNumberValue_(body.idNumber);
+  const idExt = choice_(body.idExt, questionById_(config, 'idExt').options, 'ID issuing department');
 
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   let userFolder;
   const folders = {};
   try {
-    userFolder = findOrCreateUserFolder_(ci, extension, nombre);
+    userFolder = findOrCreateUserFolder_(idNumber, idExt, fullName);
     Object.keys(SUBFOLDERS).forEach(function (category) {
-      if (category === 'pago' && !questionById_(config, 'pago').enabled) return;
+      if (category === 'payment' && !questionById_(config, 'payment').enabled) return;
       folders[category] = getOrCreateChild_(userFolder, SUBFOLDERS[category]).getId();
     });
   } finally {
@@ -330,8 +320,8 @@ function initRequest(body) {
 
   const requestId = Utilities.getUuid();
   putCache_('req:' + requestId, {
-    ci: ci,
-    extension: extension,
+    idNumber: idNumber,
+    idExt: idExt,
     userFolderUrl: userFolder.getUrl(),
     folders: folders,
   });
@@ -342,16 +332,16 @@ function startUpload(body) {
   const req = getRequest_(body.requestId);
   const category = String(body.category || '');
   const rule = ruleFor_(getConfig_(), category);
-  if (!req.folders[category]) throw new UserError('Categoría de archivo no válida.');
+  if (!req.folders[category]) throw new UserError('Invalid file category.');
 
-  const name = text_(body.name, 'Nombre de archivo', 200).replace(/[\\/\u0000-\u001f]/g, '_');
+  const name = text_(body.name, 'File name', 200).replace(/[\\/\u0000-\u001f]/g, '_');
   const ext = extOf_(name);
   if (rule.extensions.indexOf(ext) === -1) {
-    throw new UserError('Tipo de archivo no permitido: ' + name);
+    throw new UserError('File type not allowed: ' + name);
   }
   const size = Number(body.size);
   if (!Number.isInteger(size) || size <= 0 || size > rule.maxTotal) {
-    throw new UserError('Tamaño de archivo no permitido: ' + name);
+    throw new UserError('File size not allowed: ' + name);
   }
 
   const mimeType = MIME_BY_EXT[ext];
@@ -368,7 +358,7 @@ function startUpload(body) {
     muteHttpExceptions: true,
   });
   if (res.getResponseCode() !== 200) {
-    throw new Error('Drive no abrió la sesión de subida: ' + res.getResponseCode() + ' ' + res.getContentText());
+    throw new Error('Drive did not open the upload session: ' + res.getResponseCode() + ' ' + res.getContentText());
   }
 
   const uploadId = Utilities.getUuid();
@@ -398,7 +388,7 @@ function uploadChunk(body) {
     end >= up.size ||
     (!isLast && bytes.length % (256 * 1024) !== 0)
   ) {
-    throw new UserError('Fragmento de archivo no válido.');
+    throw new UserError('Invalid file chunk.');
   }
 
   const res = UrlFetchApp.fetch(up.sessionUrl, {
@@ -412,7 +402,7 @@ function uploadChunk(body) {
   return handleUploadResponse_(body.uploadId, up, res);
 }
 
-/** Pregunta a Drive cuántos bytes recibió, para reanudar tras un fallo de red. */
+/** Asks Drive how many bytes it received, to resume after a network failure. */
 function uploadStatus(body) {
   const up = getUpload_(body.uploadId);
   if (up.fileId) return { done: true };
@@ -435,16 +425,16 @@ function submit(body) {
   let req;
   let files;
   try {
-    // Dentro del lock para que un doble clic no registre dos filas.
-    // Si la respuesta anterior se perdió y el cliente reintenta, ya está registrada.
+    // Inside the lock so a double click cannot record two rows.
+    // If the previous response was lost and the client retries, it is already recorded.
     if (CacheService.getScriptCache().get('done:' + body.requestId)) return { received: true };
     req = getRequest_(body.requestId);
-    if (answers.ci !== req.ci || answers.extension !== req.extension) {
-      throw new UserError('Los datos del carnet cambiaron. Vuelve a enviar la solicitud.', 'EXPIRED');
+    if (answers.idNumber !== req.idNumber || answers.idExt !== req.idExt) {
+      throw new UserError('The ID details changed. Please submit the request again.', 'EXPIRED');
     }
     files = collectFiles_(config, body.requestId, body.uploads || {});
 
-    const values = { _timestamp: new Date(), _estado: 'PENDIENTE', _detalle: '', _carpeta: req.userFolderUrl, _requestId: body.requestId };
+    const values = { _timestamp: new Date(), _status: 'PENDING', _detail: '', _folder: req.userFolderUrl, _requestId: body.requestId };
     config.questions.forEach(function (q) {
       if (!q.enabled) return;
       values[q.id] = q.type === 'file' ? links_(files[q.category]) : (q.type === 'date' ? dateValue_(answers[q.id]) : answers[q.id]);
@@ -461,22 +451,22 @@ function submit(body) {
 }
 
 // ---------------------------------------------------------------------------
-// Panel admin
+// Admin panel
 // ---------------------------------------------------------------------------
 
 function adminLogin(body) {
   const cache = CacheService.getScriptCache();
   const fails = Number(cache.get('admin-fails') || 0);
-  if (fails >= ADMIN_MAX_FAILS) throw new UserError('Demasiados intentos fallidos. Espera 15 minutos.');
+  if (fails >= ADMIN_MAX_FAILS) throw new UserError('Too many failed attempts. Wait 15 minutes.');
 
   const props = PropertiesService.getScriptProperties();
   const salt = props.getProperty('ADMIN_SALT');
   const hash = props.getProperty('ADMIN_PASSWORD_HASH');
-  if (!salt || !hash) throw new Error('Falta la contraseña del panel. Ejecuta setup().');
+  if (!salt || !hash) throw new Error('The panel password is missing. Run setup().');
 
   if (hashPassword_(String(body.password || ''), salt) !== hash) {
     cache.put('admin-fails', String(fails + 1), 15 * 60);
-    throw new UserError('Contraseña incorrecta.');
+    throw new UserError('Wrong password.');
   }
   const token = Utilities.getUuid();
   cache.put('admin:' + token, '1', ADMIN_SESSION_TTL);
@@ -518,10 +508,10 @@ function adminSaveConfig(body) {
 }
 
 // ---------------------------------------------------------------------------
-// Fotos del sitio
+// Site photos
 // ---------------------------------------------------------------------------
 
-/** Público: devuelve {slot: url} solo de las fotos que se cambiaron. */
+/** Public: returns {slot: url} only for the photos that were changed. */
 function getSiteImages() {
   return { images: siteImageUrls_() };
 }
@@ -550,7 +540,7 @@ function saveSiteImages_(map) {
   CacheService.getScriptCache().remove('site-images');
 }
 
-/** Reconoce el formato por los primeros bytes; no se confía en el nombre ni en el tipo que declara el navegador. */
+/** Recognizes the format by its first bytes; neither the file name nor the type declared by the browser is trusted. */
 function sniffImage_(bytes) {
   const b = bytes.map(function (x) { return x & 255; });
   if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return { mime: 'image/jpeg', ext: 'jpg' };
@@ -566,19 +556,19 @@ function trashSiteImage_(entry) {
   try {
     DriveApp.getFileById(entry.id).setTrashed(true);
   } catch (err) {
-    // Ya no existe: nada que borrar.
+    // It no longer exists: nothing to delete.
   }
 }
 
 function adminUploadImage(body) {
   requireAdmin_(body.token);
   const slot = String(body.slot || '');
-  if (SITE_SLOTS.indexOf(slot) === -1) throw new UserError('Esa foto no se puede cambiar.');
+  if (SITE_SLOTS.indexOf(slot) === -1) throw new UserError('That photo cannot be changed.');
 
   const bytes = Utilities.base64Decode(String(body.data || ''));
-  if (!bytes.length || bytes.length > MAX_SITE_IMAGE) throw new UserError('La imagen debe pesar menos de 6 MB.');
+  if (!bytes.length || bytes.length > MAX_SITE_IMAGE) throw new UserError('The image must weigh less than 6 MB.');
   const kind = sniffImage_(bytes);
-  if (!kind) throw new UserError('Usa una imagen JPG, PNG o WebP.');
+  if (!kind) throw new UserError('Use a JPG, PNG or WebP image.');
 
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -600,7 +590,7 @@ function adminUploadImage(body) {
 function adminResetImage(body) {
   requireAdmin_(body.token);
   const slot = String(body.slot || '');
-  if (SITE_SLOTS.indexOf(slot) === -1) throw new UserError('Esa foto no se puede cambiar.');
+  if (SITE_SLOTS.indexOf(slot) === -1) throw new UserError('That photo cannot be changed.');
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -618,17 +608,17 @@ function adminChangePassword(body) {
   requireAdmin_(body.token);
   const props = PropertiesService.getScriptProperties();
   if (hashPassword_(String(body.current || ''), props.getProperty('ADMIN_SALT')) !== props.getProperty('ADMIN_PASSWORD_HASH')) {
-    throw new UserError('La contraseña actual no es correcta.');
+    throw new UserError('The current password is not correct.');
   }
   const next = String(body.next || '');
-  if (next.length < 8) throw new UserError('La nueva contraseña debe tener al menos 8 caracteres.');
+  if (next.length < 8) throw new UserError('The new password must have at least 8 characters.');
   setPassword_(next);
   return { ok: true };
 }
 
 function requireAdmin_(token) {
   if (!token || !CacheService.getScriptCache().get('admin:' + String(token))) {
-    throw new UserError('La sesión expiró. Vuelve a ingresar.', 'AUTH');
+    throw new UserError('Your session expired. Please sign in again.', 'AUTH');
   }
 }
 
@@ -646,9 +636,9 @@ function setPassword_(password) {
 }
 
 /**
- * Combina lo que envía el panel con la configuración guardada.
- * Las preguntas de fábrica conservan su tipo y no se pueden borrar;
- * las bloqueadas además siguen activas y obligatorias.
+ * Merges what the panel sends with the stored configuration.
+ * Factory questions cannot be deleted and only change type within their family;
+ * the locked ones also stay active and required.
  */
 const TYPE_FAMILIES = [['text', 'textarea'], ['select', 'radio', 'checkbox']];
 
@@ -674,19 +664,19 @@ function sanitizeConfig_(previous, incoming) {
     if (seen[id]) return;
     const prev = prevById[id];
     const isSystem = prev && prev.system;
-    if (!isSystem && !/^q_[a-z0-9]{6,16}$/.test(id)) throw new UserError('Identificador de pregunta no válido.');
+    if (!isSystem && !/^q_[a-z0-9]{6,16}$/.test(id)) throw new UserError('Invalid question identifier.');
 
-    // Las preguntas de fábrica pueden cambiar de tipo dentro de su familia (respuesta corta <-> párrafo,
-    // lista <-> opción única <-> casillas). Las que validan un dato concreto o arman la carpeta no cambian.
+    // Factory questions can change type within their family (short answer <-> paragraph,
+    // dropdown <-> single choice <-> checkboxes). Those that validate a specific datum or build the folder do not change.
     let type = String(raw.type || '');
     if (isSystem) {
       const family = prev.locked ? [prev.type] : typeFamily_(prev.type);
       type = family.indexOf(type) !== -1 ? type : prev.type;
     }
-    if (!isSystem && CUSTOM_TYPES.indexOf(type) === -1) throw new UserError('Tipo de pregunta no válido.');
+    if (!isSystem && CUSTOM_TYPES.indexOf(type) === -1) throw new UserError('Invalid question type.');
 
     const label = limit_(raw.label, 300);
-    if (!label) throw new UserError('Hay una pregunta sin texto.');
+    if (!label) throw new UserError('There is a question without text.');
 
     const q = {
       id: id,
@@ -714,9 +704,9 @@ function sanitizeConfig_(previous, incoming) {
     if (CHOICE_TYPES.indexOf(type) !== -1) {
       const options = (Array.isArray(raw.options) ? raw.options : [])
         .map(function (o) { return limit_(o, 200); })
-        .filter(function (o, i, all) { return o && o !== 'Otro' && all.indexOf(o) === i; })
+        .filter(function (o, i, all) { return o && o !== 'Other' && all.indexOf(o) === i; })
         .slice(0, MAX_OPTIONS);
-      if (!options.length) throw new UserError('La pregunta "' + label + '" necesita al menos una opción.');
+      if (!options.length) throw new UserError('The question "' + label + '" needs at least one option.');
       q.options = options;
       q.other = type !== 'select' && Boolean(raw.other);
     }
@@ -724,25 +714,25 @@ function sanitizeConfig_(previous, incoming) {
     questions.push(q);
   });
 
-  // Las preguntas de fábrica no se pueden borrar: si faltan, vuelven como estaban.
+  // Factory questions cannot be deleted: if they are missing, they come back as they were.
   previous.questions.forEach(function (q) {
     if (q.system && !seen[q.id]) questions.push(q);
   });
-  if (questions.length > MAX_QUESTIONS) throw new UserError('Máximo ' + MAX_QUESTIONS + ' preguntas.');
+  if (questions.length > MAX_QUESTIONS) throw new UserError('Maximum ' + MAX_QUESTIONS + ' questions.');
 
   const emails = (Array.isArray(incoming.notifyEmails) ? incoming.notifyEmails : [])
     .map(function (e) { return String(e || '').trim().toLowerCase(); })
     .filter(function (e, i, all) { return e && all.indexOf(e) === i; });
   emails.forEach(function (e) {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) throw new UserError('Correo no válido: ' + e);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) throw new UserError('Invalid email: ' + e);
   });
-  if (!emails.length) throw new UserError('Agrega al menos un correo de aviso.');
-  if (emails.length > 10) throw new UserError('Máximo 10 correos de aviso.');
+  if (!emails.length) throw new UserError('Add at least one notification email.');
+  if (emails.length > 10) throw new UserError('Maximum 10 notification emails.');
 
   return { version: previous.version || CONFIG_VERSION, notifyEmails: emails, sections: sections, questions: questions, columns: previous.columns };
 }
 
-/** Da una columna a cada pregunta nueva y mantiene los encabezados al día. */
+/** Gives a column to each new question and keeps the headers up to date. */
 function syncSheetColumns_(config) {
   const sheet = getResponsesSheet_();
   const columns = config.columns;
@@ -755,20 +745,20 @@ function syncSheetColumns_(config) {
   });
 }
 
-/** Los correos de aviso pueden abrir los archivos: se les da acceso a la carpeta principal. */
+/** Notification emails can open the files: they get access to the main folder. */
 function syncFolderEditors_(before, after) {
   const root = DriveApp.getFolderById(requiredProp_('ROOT_FOLDER_ID'));
   const owner = Session.getEffectiveUser().getEmail().toLowerCase();
   after.filter(function (e) { return before.indexOf(e) === -1 && e !== owner; }).forEach(function (e) {
-    try { root.addEditor(e); } catch (err) { console.error('No se pudo compartir con ' + e + ': ' + err); }
+    try { root.addEditor(e); } catch (err) { console.error('Could not share with ' + e + ': ' + err); }
   });
   before.filter(function (e) { return after.indexOf(e) === -1 && e !== owner; }).forEach(function (e) {
-    try { root.removeEditor(e); } catch (err) { console.error('No se pudo quitar a ' + e + ': ' + err); }
+    try { root.removeEditor(e); } catch (err) { console.error('Could not remove ' + e + ': ' + err); }
   });
 }
 
 // ---------------------------------------------------------------------------
-// Configuración guardada
+// Stored configuration
 // ---------------------------------------------------------------------------
 
 function getConfig_() {
@@ -791,11 +781,11 @@ function getConfig_() {
 const CONFIG_CACHE_KEY = 'config-v2';
 
 /**
- * Pone al día las preguntas de fábrica ya guardadas cuando cambia CONFIG_VERSION.
- * Solo toca texto, tipo, opciones y ayuda de las preguntas listadas; respeta si están
- * activas, si son obligatorias, su sección y su orden.
+ * Brings the stored factory questions up to date when CONFIG_VERSION changes.
+ * It only touches text, type, options and help of the listed questions; it keeps whether
+ * they are active, whether they are required, their section and their order.
  */
-const MIGRATED_IDS = ['nivel', 'modalidad', 'datos', 'universidad', 'estadoTitulo', 'titulo', 'ciudad', 'servicio', 'norma'];
+const MIGRATED_IDS = ['level', 'workType', 'language', 'university', 'topicStatus', 'title', 'city', 'service', 'style'];
 
 function migrateConfig_(config) {
   const defaults = {};
@@ -827,7 +817,7 @@ function buildDefaultConfig_() {
     if (q.help === undefined) q.help = '';
     if (CHOICE_TYPES.indexOf(q.type) !== -1 && q.other === undefined) q.other = false;
   });
-  // Columnas en el mismo orden que la hoja del Google Form, con las fijas al final.
+  // Columns in the same order as the questions, with the fixed ones at the end.
   config.columns = { _timestamp: 1 };
   config.questions.forEach(function (q, i) { config.columns[q.id] = i + 2; });
   let col = config.questions.length + 2;
@@ -857,13 +847,13 @@ function maxColumn_(columns) {
 }
 
 // ---------------------------------------------------------------------------
-// Configuración inicial (ejecutar a mano una vez desde el editor)
+// Initial setup (run once by hand from the editor)
 // ---------------------------------------------------------------------------
 
 /**
- * Crea la carpeta principal, la hoja, la configuración y la contraseña del panel
- * si no existen. Para usar una carpeta u hoja ya existente, define antes
- * ROOT_FOLDER_ID o SPREADSHEET_ID en Propiedades del script.
+ * Creates the main folder, the spreadsheet, the configuration and the panel password
+ * if they do not exist. To use an existing folder or spreadsheet, define
+ * ROOT_FOLDER_ID or SPREADSHEET_ID in the script properties first.
  */
 function setup() {
   const props = PropertiesService.getScriptProperties();
@@ -883,7 +873,7 @@ function setup() {
   let sheet = spreadsheet.getSheetByName(SHEET_NAME);
   if (!sheet) {
     sheet = spreadsheet.insertSheet(SHEET_NAME);
-    // Una hoja recién creada trae una pestaña vacía por defecto que sobra.
+    // A newly created spreadsheet comes with a default empty tab that is not needed.
     spreadsheet.getSheets().forEach(function (s) {
       if (s.getName() !== SHEET_NAME && s.getName() !== CONFIG_SHEET_NAME && s.getLastRow() === 0) spreadsheet.deleteSheet(s);
     });
@@ -894,8 +884,8 @@ function setup() {
   if (!configSheet.getRange('A1').getValue()) saveConfig_(buildDefaultConfig_());
   const config = getConfig_();
 
-  // Hoja nueva: encabezados y filas fijas. Hoja existente: solo se rellenan los
-  // encabezados que falten, sin tocar los datos ni los encabezados que ya tiene.
+  // New sheet: headers and frozen rows. Existing sheet: only the missing headers are
+  // filled in, without touching the data or the headers it already has.
   const isNew = sheet.getLastRow() === 0;
   const labels = {};
   META_COLUMNS.forEach(function (m) { labels[m.key] = m.label; });
@@ -914,29 +904,29 @@ function setup() {
   if (!props.getProperty('ADMIN_PASSWORD_HASH')) {
     const password = Utilities.getUuid().replace(/-/g, '').slice(0, 12);
     setPassword_(password);
-    console.log('Contraseña inicial del panel admin (cámbiala al entrar): ' + password);
+    console.log('Initial admin panel password (change it after signing in): ' + password);
   }
 
-  console.log('Carpeta principal: ' + DriveApp.getFolderById(props.getProperty('ROOT_FOLDER_ID')).getUrl());
-  console.log('Hoja de respuestas: ' + spreadsheet.getUrl());
-  console.log('Aviso a: ' + config.notifyEmails.join(', '));
+  console.log('Main folder: ' + DriveApp.getFolderById(props.getProperty('ROOT_FOLDER_ID')).getUrl());
+  console.log('Responses sheet: ' + spreadsheet.getUrl());
+  console.log('Notifications to: ' + config.notifyEmails.join(', '));
 }
 
-/** Por si se olvida la contraseña: ejecutar desde el editor y leer el registro. */
+/** In case the password is forgotten: run it from the editor and read the log. */
 function resetAdminPassword() {
   const password = Utilities.getUuid().replace(/-/g, '').slice(0, 12);
   setPassword_(password);
-  console.log('Nueva contraseña del panel admin: ' + password);
+  console.log('New admin panel password: ' + password);
 }
 
 // ---------------------------------------------------------------------------
 // Drive
 // ---------------------------------------------------------------------------
 
-function findOrCreateUserFolder_(ci, extension, nombre) {
+function findOrCreateUserFolder_(idNumber, idExt, fullName) {
   const props = PropertiesService.getScriptProperties();
-  const key = 'user:' + ci + '-' + extension;
-  const prefix = ci + '-' + extension + '-';
+  const key = 'user:' + idNumber + '-' + idExt;
+  const prefix = idNumber + '-' + idExt + '-';
 
   const savedId = props.getProperty(key);
   if (savedId) {
@@ -944,11 +934,11 @@ function findOrCreateUserFolder_(ci, extension, nombre) {
       const saved = DriveApp.getFolderById(savedId);
       if (!saved.isTrashed()) return saved;
     } catch (err) {
-      // La carpeta fue borrada: se busca o se crea otra.
+      // The folder was deleted: look for another one or create it.
     }
   }
 
-  // Sin registro (p. ej. tras migrar de cuenta): buscar por nombre antes de crear.
+  // No record (e.g. after migrating accounts): look it up by name before creating.
   const root = getRootFolder_();
   const it = root.getFolders();
   while (it.hasNext()) {
@@ -959,14 +949,14 @@ function findOrCreateUserFolder_(ci, extension, nombre) {
     }
   }
 
-  const created = root.createFolder(prefix + initials_(nombre));
+  const created = root.createFolder(prefix + initials_(fullName));
   props.setProperty(key, created.getId());
   return created;
 }
 
-/** Iniciales del nombre sin tildes, p. ej. "Juan Carlos Pérez Mamani" -> "JCPM" (máximo 4). */
-function initials_(nombre) {
-  const letters = String(nombre || '')
+/** Initials of the name without accents, e.g. "Juan Carlos Perez Mamani" -> "JCPM" (maximum 4). */
+function initials_(fullName) {
+  const letters = String(fullName || '')
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .toUpperCase().split(/\s+/)
     .map(function (w) { return w.replace(/[^A-Z]/g, '').charAt(0); })
@@ -997,9 +987,9 @@ function handleUploadResponse_(uploadId, up, res) {
     return { done: true };
   }
   if (code === 404 || code === 410) {
-    throw new UserError('La subida de "' + up.name + '" se interrumpió. Vuelve a intentar.');
+    throw new UserError('The upload of "' + up.name + '" was interrupted. Please try again.');
   }
-  throw new Error('Drive respondió ' + code + ': ' + res.getContentText());
+  throw new Error('Drive responded ' + code + ': ' + res.getContentText());
 }
 
 function collectFiles_(config, requestId, uploads) {
@@ -1012,15 +1002,15 @@ function collectFiles_(config, requestId, uploads) {
     const ids = Array.isArray(uploads[category]) ? uploads[category].map(String) : [];
 
     if (!q.enabled) {
-      if (ids.length) throw new UserError('El campo "' + q.label + '" no está habilitado.');
+      if (ids.length) throw new UserError('The field "' + q.label + '" is not enabled.');
       result[category] = [];
       return;
     }
     if (q.required && !ids.length) {
-      throw new UserError('Falta subir: ' + q.label + '.');
+      throw new UserError('Missing upload: ' + q.label + '.');
     }
     if (ids.length > rule.maxFiles) {
-      throw new UserError('Demasiados archivos en: ' + q.label + '.');
+      throw new UserError('Too many files in: ' + q.label + '.');
     }
 
     const cached = ids.length ? cache.getAll(ids.map(function (id) { return 'up:' + id; })) : {};
@@ -1029,19 +1019,19 @@ function collectFiles_(config, requestId, uploads) {
       const raw = cached['up:' + id];
       const up = raw ? JSON.parse(raw) : null;
       if (!up || up.requestId !== requestId || up.category !== category || !up.fileId) {
-        throw new UserError('Un archivo no terminó de subirse. Vuelve a enviar la solicitud.', 'EXPIRED');
+        throw new UserError('A file did not finish uploading. Please submit the request again.', 'EXPIRED');
       }
       total += up.size;
       return up;
     });
     if (total > rule.maxTotal) {
-      throw new UserError('Se superó el tamaño máximo en: ' + q.label + '.');
+      throw new UserError('The maximum size was exceeded in: ' + q.label + '.');
     }
   });
   return result;
 }
 
-/** dd/mm/yyyy -> fecha real, para que la hoja pueda ordenar y filtrar por plazo. */
+/** dd/mm/yyyy -> real date, so the sheet can sort and filter by deadline. */
 function dateValue_(text) {
   const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(text || ''));
   return m ? new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])) : text;
@@ -1052,19 +1042,19 @@ function links_(uploads) {
 }
 
 // ---------------------------------------------------------------------------
-// Hoja y correo
+// Sheet and email
 // ---------------------------------------------------------------------------
 
 function getResponsesSheet_() {
   const sheet = SpreadsheetApp.openById(requiredProp_('SPREADSHEET_ID')).getSheetByName(SHEET_NAME);
-  if (!sheet) throw new Error('No existe la pestaña "' + SHEET_NAME + '". Ejecuta setup().');
+  if (!sheet) throw new Error('The tab "' + SHEET_NAME + '" does not exist. Run setup().');
   return sheet;
 }
 
 /**
- * Escribe cada valor en la columna que le corresponde según la configuración.
- * No toca formatos de celda: en hojas nuevas las columnas ya nacen como texto (setup),
- * y en una tabla de Sheets el tipo de cada columna lo define la tabla.
+ * Writes each value in the column that corresponds to it according to the configuration.
+ * It does not touch cell formats: in new sheets the columns are born as text (setup),
+ * and in a Sheets table the type of each column is defined by the table.
  */
 function appendRow_(config, values) {
   const sheet = getResponsesSheet_();
@@ -1078,13 +1068,13 @@ function appendRow_(config, values) {
   const target = sheet.getLastRow() + 1;
   sheet.getRange(target, 1, 1, width).setValues([row]);
   SpreadsheetApp.flush();
-  // Si la hoja descarta la escritura sin avisar, que el envío falle en vez de dar por bueno un registro vacío.
+  // If the sheet silently discards the write, fail the submission instead of accepting an empty record.
   if (sheet.getRange(target, 1).getValue() === '') {
-    throw new Error('La fila ' + target + ' de "' + sheet.getName() + '" quedó vacía tras escribirla.');
+    throw new Error('Row ' + target + ' of "' + sheet.getName() + '" was empty after writing it.');
   }
 }
 
-/** Columnas en texto plano para que CI y celular no se conviertan en números. Una tabla con tipos propios las rechaza: se ignora. */
+/** Plain-text columns so that ID and phone numbers are not turned into numbers. A table with its own column types rejects it: it is ignored. */
 function setTextColumns_(sheet, fromCol, toCol) {
   const rows = sheet.getMaxRows() - 1;
   if (rows < 1) return;
@@ -1092,11 +1082,11 @@ function setTextColumns_(sheet, fromCol, toCol) {
     sheet.getRange(2, fromCol, rows, toCol - fromCol + 1).setNumberFormat('@');
     SpreadsheetApp.flush();
   } catch (err) {
-    console.log('Formato de texto omitido en las columnas ' + fromCol + '-' + toCol + ': ' + err.message);
+    console.log('Text format skipped in columns ' + fromCol + '-' + toCol + ': ' + err.message);
   }
 }
 
-/** Evita que un texto del usuario se interprete como fórmula. */
+/** Prevents user text from being interpreted as a formula. */
 function safeCell_(value) {
   return typeof value === 'string' && /^[=+\-@]/.test(value) ? "'" + value : value;
 }
@@ -1110,7 +1100,7 @@ function notifyAdmin_(config, answers, files, req) {
     if (!q.enabled) return;
     if (q.type === 'file') {
       const count = (files[q.category] || []).length;
-      if (count) rows.push([q.label, count + (count === 1 ? ' archivo' : ' archivos')]);
+      if (count) rows.push([q.label, count + (count === 1 ? ' file' : ' files')]);
       return;
     }
     if (answers[q.id] !== '' && answers[q.id] !== undefined) rows.push([q.label, answers[q.id]]);
@@ -1118,31 +1108,31 @@ function notifyAdmin_(config, answers, files, req) {
 
   const sheetUrl = 'https://docs.google.com/spreadsheets/d/' + requiredProp_('SPREADSHEET_ID');
   const html =
-    '<p>Llegó una nueva solicitud desde el formulario web.</p>' +
+    '<p>A new request arrived from the web form.</p>' +
     '<table cellpadding="6" style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px">' +
     rows.map(function (r) {
       return '<tr><td style="border:1px solid #ddd;font-weight:bold">' + escapeHtml_(r[0]) +
         '</td><td style="border:1px solid #ddd">' + escapeHtml_(String(r[1])) + '</td></tr>';
     }).join('') +
     '</table>' +
-    '<p><a href="' + req.userFolderUrl + '">Abrir carpeta del usuario</a> · ' +
-    '<a href="' + sheetUrl + '">Abrir hoja de respuestas</a></p>';
+    '<p><a href="' + req.userFolderUrl + '">Open user folder</a> · ' +
+    '<a href="' + sheetUrl + '">Open responses sheet</a></p>';
 
   try {
     MailApp.sendEmail({
       to: to,
-      subject: 'Nueva solicitud: ' + answers.nombre + ' (' + answers.ci + '-' + answers.extension + ')',
+      subject: 'New request: ' + answers.fullName + ' (' + answers.idNumber + '-' + answers.idExt + ')',
       htmlBody: html,
-      name: 'Formulario de solicitudes',
+      name: 'Request form',
     });
   } catch (err) {
-    // La solicitud ya quedó registrada; un fallo del correo no debe anularla.
-    console.error('No se pudo enviar el aviso: ' + err);
+    // The request is already recorded; an email failure must not cancel it.
+    console.error('Could not send the notification: ' + err);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Validación
+// Validation
 // ---------------------------------------------------------------------------
 
 function validateAnswers_(config, raw) {
@@ -1157,22 +1147,22 @@ function validateAnswers_(config, raw) {
 function validateQuestion_(q, value) {
   const empty = value == null || (Array.isArray(value) ? value.length === 0 : String(value).trim() === '');
   if (empty) {
-    if (q.required) throw new UserError('Falta: ' + q.label + '.');
+    if (q.required) throw new UserError('Missing: ' + q.label + '.');
     return '';
   }
-  const choices = (q.options || []).concat(q.other ? ['Otro'] : []);
+  const choices = (q.options || []).concat(q.other ? ['Other'] : []);
   switch (q.type) {
     case 'text': {
-      const v = text_(value, q.label, q.id === 'nombre' ? 120 : 200).replace(/\s+/g, ' ');
-      return q.id === 'nombre' ? titleCase_(v) : canonicalSuggestion_(q, v);
+      const v = text_(value, q.label, q.id === 'fullName' ? 120 : 200).replace(/\s+/g, ' ');
+      return q.id === 'fullName' ? titleCase_(v) : canonicalSuggestion_(q, v);
     }
     case 'place': return place_(value, q);
     case 'textarea': return text_(value, q.label, 3000);
     case 'tel': return phone_(value, q.label);
-    case 'ci': return ciValue_(value);
+    case 'idnumber': return idNumberValue_(value);
     case 'number': {
       const n = Number(value);
-      if (!isFinite(n)) throw new UserError(q.label + ' debe ser un número.');
+      if (!isFinite(n)) throw new UserError(q.label + ' must be a number.');
       return n;
     }
     case 'pages': return pages_(value);
@@ -1181,10 +1171,10 @@ function validateQuestion_(q, value) {
     case 'radio': return choice_(value, choices, q.label);
     case 'checkbox': return multi_(value, choices, q.label);
   }
-  throw new UserError('Pregunta no válida: ' + q.label);
+  throw new UserError('Invalid question: ' + q.label);
 }
 
-/** Nombres: mayúscula inicial en cada palabra y partículas (de, del, la…) en minúscula. */
+/** Names: capital initial in every word; Spanish particles (de, del, la...) stay lowercase. Edit the list for your languages. */
 function titleCase_(text) {
   const small = ['de', 'del', 'la', 'las', 'los', 'y', 'e'];
   return String(text).trim().replace(/\s+/g, ' ').split(' ').map(function (word, i) {
@@ -1195,7 +1185,7 @@ function titleCase_(text) {
   }).join(' ');
 }
 
-/** Si lo escrito coincide con una sugerencia (sin mayúsculas), se guarda con el nombre de la lista. */
+/** If what was typed matches a suggestion (ignoring case), it is saved with the spelling of the list. */
 function canonicalSuggestion_(q, value) {
   const list = SUGGESTIONS[q.suggest] || [];
   const key = value.toLowerCase();
@@ -1205,69 +1195,72 @@ function canonicalSuggestion_(q, value) {
   return value;
 }
 
-/** Celular de Bolivia (8 dígitos que empiezan con 6 o 7) o internacional; siempre sale como +<código><número>. */
+/**
+ * Phone numbers always come out as +<country code><number>. A number typed with a leading "+" is kept as it is;
+ * a local number (6 to 10 digits) gets PHONE_COUNTRY_CODE in front. Change the constant for your country.
+ */
 function phone_(value, label) {
-  const digits = String(value).replace(/\D/g, '');
-  if (/^[67]\d{7}$/.test(digits)) return '+591' + digits;
-  if (/^591[67]\d{7}$/.test(digits)) return '+' + digits;
-  if (String(value).trim().charAt(0) === '+' && digits.length >= 10 && digits.length <= 15) return '+' + digits;
-  throw new UserError(label + ': escribe 8 dígitos que empiecen con 6 o 7, o un número internacional con su código de país.');
+  const raw = String(value).trim();
+  const digits = raw.replace(/\D/g, '');
+  if (raw.charAt(0) === '+' && digits.length >= 8 && digits.length <= 15) return '+' + digits;
+  if (/^\d{6,10}$/.test(digits)) return '+' + PHONE_COUNTRY_CODE + digits;
+  throw new UserError(label + ': type your number with the country code (for example +15551234567) or the local number only.');
 }
 
-/** Ciudad y país: solo letras, espacios, coma, punto, guion y apóstrofo. */
+/** City and country: only letters, spaces, comma, period, hyphen and apostrophe. */
 function place_(value, q) {
   const v = text_(value, q.label, 80).replace(/\s+/g, ' ');
-  if (!/^\p{L}[\p{L} .,'’-]{1,79}$/u.test(v)) throw new UserError(q.label + ': usa solo letras, sin números.');
+  if (!/^\p{L}[\p{L} .,'’-]{1,79}$/u.test(v)) throw new UserError(q.label + ': use letters only, no numbers.');
   return canonicalSuggestion_(q, titleCase_(v).replace(/(^|, )([a-záéíóúñ])/g, function (m, a, b) { return a + b.toUpperCase(); }));
 }
 
 function text_(value, label, maxLength) {
   const v = String(value == null ? '' : value).trim();
-  if (!v) throw new UserError('Falta: ' + label + '.');
-  if (v.length > maxLength) throw new UserError(label + ' es demasiado largo.');
+  if (!v) throw new UserError('Missing: ' + label + '.');
+  if (v.length > maxLength) throw new UserError(label + ' is too long.');
   return v;
 }
 
 function match_(value, regex, label) {
-  if (!value) throw new UserError('Falta: ' + label + '.');
-  if (!regex.test(value)) throw new UserError(label + ' no es válido.');
+  if (!value) throw new UserError('Missing: ' + label + '.');
+  if (!regex.test(value)) throw new UserError(label + ' is not valid.');
   return value;
 }
 
-function ciValue_(value) {
-  return match_(String(value || '').trim().toUpperCase(), /^[0-9A-Z-]{4,15}$/, 'Número de carnet');
+function idNumberValue_(value) {
+  return match_(String(value || '').trim().toUpperCase(), /^[0-9A-Z-]{4,15}$/, 'ID number');
 }
 
-/** Acepta una opción de la lista o "Otro: <texto>" si la lista incluye "Otro". */
+/** Accepts an option from the list or "Other: <text>" if the list includes "Other". */
 function choice_(value, list, label) {
   const v = String(value || '').trim();
-  if (!v) throw new UserError('Falta: ' + label + '.');
-  if (v !== 'Otro' && (list || []).indexOf(v) !== -1) return v;
-  if ((list || []).indexOf('Otro') !== -1 && /^Otro: \S/.test(v) && v.length <= 200) return v;
-  throw new UserError('Opción no válida en ' + label + '.');
+  if (!v) throw new UserError('Missing: ' + label + '.');
+  if (v !== 'Other' && (list || []).indexOf(v) !== -1) return v;
+  if ((list || []).indexOf('Other') !== -1 && /^Other: \S/.test(v) && v.length <= 200) return v;
+  throw new UserError('Invalid option in ' + label + '.');
 }
 
 function multi_(values, list, label) {
-  if (!Array.isArray(values) || !values.length) throw new UserError('Falta: ' + label + '.');
-  if (values.length > list.length) throw new UserError('Opción no válida en ' + label + '.');
+  if (!Array.isArray(values) || !values.length) throw new UserError('Missing: ' + label + '.');
+  if (values.length > list.length) throw new UserError('Invalid option in ' + label + '.');
   return values.map(function (v) { return choice_(v, list, label); }).join(', ');
 }
 
-/** Acepta un número de páginas o un rango, p. ej. "80" o "50-140". */
+/** Accepts a number of pages or a range, e.g. "80" or "50-140". */
 function pages_(value) {
   const v = String(value || '').replace(/\s+/g, '');
   if (!/^\d{1,4}(-\d{1,4})?$/.test(v)) {
-    throw new UserError('La extensión estimada debe ser un número o un rango de páginas, p. ej. 50-140.');
+    throw new UserError('The estimated length must be a number or a range of pages, e.g. 50-140.');
   }
   return v;
 }
 
-/** Recibe yyyy-mm-dd y devuelve dd/mm/yyyy, como en la hoja del Form. */
+/** Receives yyyy-mm-dd and returns dd/mm/yyyy. */
 function date_(value, q) {
   const v = String(value || '');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new UserError('Fecha no válida en: ' + q.label + '.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new UserError('Invalid date in: ' + q.label + '.');
   if (q.futureOnly && v < Utilities.formatDate(new Date(), TIMEZONE, 'yyyy-MM-dd')) {
-    throw new UserError(q.label + ': la fecha no puede ser anterior a hoy.');
+    throw new UserError(q.label + ': the date cannot be earlier than today.');
   }
   return v.split('-').reverse().join('/');
 }
@@ -1279,14 +1272,14 @@ function cleanName_(value) {
 function ruleFor_(config, category) {
   const q = config.questions.filter(function (x) { return x.type === 'file' && x.category === category; })[0];
   if (!q || !q.enabled || !Object.prototype.hasOwnProperty.call(FILE_RULES, category)) {
-    throw new UserError('Categoría de archivo no válida.');
+    throw new UserError('Invalid file category.');
   }
   return FILE_RULES[category];
 }
 
 /**
- * El contenido debe coincidir con la extensión declarada (un .exe renombrado a .pdf no pasa).
- * Se revisa solo el primer fragmento: son los bytes de cabecera de cada formato.
+ * The content must match the declared extension (an .exe renamed to .pdf does not pass).
+ * Only the first chunk is checked: it holds the header bytes of each format.
  */
 function assertFileSignature_(bytes, name) {
   const ext = extOf_(name);
@@ -1309,7 +1302,7 @@ function assertFileSignature_(bytes, name) {
     docx: () => starts([0x50, 0x4b, 0x03, 0x04]),
     doc: () => starts([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
   }[ext];
-  if (!ok || !ok()) throw new UserError('El archivo "' + name + '" no es un ' + ext.toUpperCase() + ' válido. Revisa que no esté dañado.');
+  if (!ok || !ok()) throw new UserError('The file "' + name + '" is not a valid ' + ext.toUpperCase() + '. Check that it is not damaged.');
 }
 
 function extOf_(name) {
@@ -1327,13 +1320,13 @@ function limit_(value, max) {
 
 function getRequest_(requestId) {
   const raw = CacheService.getScriptCache().get('req:' + String(requestId || ''));
-  if (!raw) throw new UserError('La sesión expiró. Vuelve a enviar la solicitud.', 'EXPIRED');
+  if (!raw) throw new UserError('The session expired. Please submit the request again.', 'EXPIRED');
   return JSON.parse(raw);
 }
 
 function getUpload_(uploadId) {
   const raw = CacheService.getScriptCache().get('up:' + String(uploadId || ''));
-  if (!raw) throw new UserError('La subida expiró. Vuelve a enviar la solicitud.', 'EXPIRED');
+  if (!raw) throw new UserError('The upload expired. Please submit the request again.', 'EXPIRED');
   return JSON.parse(raw);
 }
 
@@ -1343,7 +1336,7 @@ function putCache_(key, value) {
 
 function requiredProp_(name) {
   const value = PropertiesService.getScriptProperties().getProperty(name);
-  if (!value) throw new Error('Falta la propiedad ' + name + '. Ejecuta setup().');
+  if (!value) throw new Error('The property ' + name + ' is missing. Run setup().');
   return value;
 }
 

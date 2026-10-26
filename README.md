@@ -1,54 +1,74 @@
-# Formulario de solicitudes — Academia Ejemplo
+# FormForge — build your own form with HTML and Google Apps Script
 
-> **Plantilla genérica.** Este repositorio es una copia del proyecto original con todos los datos reales reemplazados por datos de ejemplo: nombre de la academia (`Academia Ejemplo`), correo (`contacto@ejemplo.com`), banner, URL del backend (`PEGAR_AQUI_LA_URL_DEL_WEB_APP` en `config.js`) e identificadores de Google. Para usarla:
->
-> 1. Sigue la sección [Puesta en marcha](#5-puesta-en-marcha-paso-a-paso).
-> 2. Cambia el nombre y el correo de contacto en `index.html`, `solicitud.html` y `admin.html`, y reemplaza `assets/banner.jpg` por tu propio banner (2000 × 492 px).
-> 3. Ajusta en `apps-script/Code.gs`: `TIMEZONE`, `ROOT_FOLDER_NAME`, `SPREADSHEET_NAME`, `SHEET_NAME`, las listas de `SUGGESTIONS` y las preguntas de `DEFAULT_CONFIG`.
->
-> **Licencias.** Las fotos de `assets/` son de terceros y tienen sus propias licencias Creative Commons: la autoría de cada una está en `assets/credits.json` y se muestra al pie de la página. El código de este repositorio todavía no tiene una licencia definida.
+A complete, working example of a **self-hosted request form** that stores everything in your own Google account:
 
-Sitio web con formulario de solicitudes para una academia de asesoría académica. El usuario completa un formulario de tres pasos y sube sus documentos, sin necesidad de una cuenta de Google. Los archivos quedan en una carpeta propia dentro de Google Drive, cada solicitud queda como una fila en Google Sheets y la academia recibe un correo de aviso. Un panel de administración permite cambiar preguntas, correos de aviso, contraseña y fotos del sitio sin tocar código.
+- A static website (plain HTML, CSS and JavaScript) with a multi-step form.
+- Files uploaded by visitors go to **Google Drive**, into one folder per person.
+- Every submission becomes a row in **Google Sheets** and triggers an email notification.
+- An **admin panel** lets a non-technical owner edit questions, notification emails, photos and the password, without touching code.
+- The backend is a single **Google Apps Script** file. There is no server to run and no database to host.
 
-Si algo falla, consulta **[FIX.md](FIX.md)**: reúne los errores conocidos, su causa y cómo resolverlos.
+Visitors do not need a Google account. The owner of the Google account owns all the data.
 
-## Contenido
+It is meant to be read and learned from as much as to be copied: the code is small, commented, and the docs explain the flows and the failure modes.
 
-1. [Arquitectura](#1-arquitectura)
-2. [Estructura del repositorio](#2-estructura-del-repositorio)
-3. [Flujos](#3-flujos)
-4. [Modelo de datos](#4-modelo-de-datos)
-5. [Puesta en marcha paso a paso](#5-puesta-en-marcha-paso-a-paso)
-6. [Operación diaria](#6-operación-diaria)
-7. [Desarrollo y cambios de código](#7-desarrollo-y-cambios-de-código)
-8. [Seguridad](#8-seguridad)
-9. [Límites y cuotas](#9-límites-y-cuotas)
-10. [Migrar a otra cuenta de Google](#10-migrar-a-otra-cuenta-de-google)
+> **Generic template.** All real data of the original project was replaced with sample data: the brand (`Example Academy`), the email (`contact@example.com`), the banner, the Web App URL (`PASTE_THE_WEB_APP_URL_HERE` in `config.js`) and every Google identifier. The sample business is an academic coaching and editing service, only so the form has realistic fields.
+
+## Contents
+
+1. [What you will learn](#1-what-you-will-learn)
+2. [Architecture](#2-architecture)
+3. [Repository structure](#3-repository-structure)
+4. [Flows](#4-flows)
+5. [Data model](#5-data-model)
+6. [Quick start](#6-quick-start)
+7. [Day-to-day operation](#7-day-to-day-operation)
+8. [Adapting it to your own form](#8-adapting-it-to-your-own-form)
+9. [Development and code changes](#9-development-and-code-changes)
+10. [Security](#10-security)
+11. [Limits and quotas](#11-limits-and-quotas)
+12. [Moving to another Google account](#12-moving-to-another-google-account)
+13. [License](#13-license)
+
+When something fails, read **[FIX.md](FIX.md)**: it lists the known errors, their causes and how to fix them.
 
 ---
 
-## 1. Arquitectura
+## 1. What you will learn
 
-El sistema tiene dos mitades que solo se comunican por HTTP: un **frontend estático** y un **backend en Google Apps Script**. No hay base de datos propia ni servidor que mantener: Google Drive y Google Sheets hacen de almacenamiento.
+| Topic | Where to look |
+|---|---|
+| Using Apps Script as a JSON API behind a `doGet` / `doPost` Web App | `apps-script/Code.gs`, `ACTIONS` and `doPost` |
+| Calling a Web App from a static page without the CORS preflight (`text/plain` trick) | `api()` in `app.js` |
+| Uploading files of up to 1 GB through Apps Script (resumable Drive sessions, 8 MB chunks, retries and resume) | `startUpload`, `uploadChunk`, `uploadStatus`; `uploadFile()` in `app.js` |
+| Working with `DriveApp`, `SpreadsheetApp`, `MailApp`, `PropertiesService`, `CacheService` and `LockService` | `Code.gs` |
+| Building a form from a configuration stored in a sheet, and an editor for it (drag and drop, types, options) | `admin.js`, `sanitizeConfig_` |
+| Validating and cleaning data on the server, never only in the browser | `validateQuestion_` and its helpers |
+| Defending against malicious files, formula injection and XSS | [Security](#10-security) |
+| Deploying the static site with strict security headers (CSP) | `vercel.json` |
+
+## 2. Architecture
+
+Two halves that only talk over HTTP: a **static frontend** and a **Google Apps Script backend**. Google Drive and Google Sheets are the storage.
 
 ```mermaid
 flowchart LR
-    subgraph Navegador["Navegador del usuario"]
-        L["index.html<br/>landing"]
-        F["solicitud.html + app.js<br/>formulario"]
-        A["admin.html + admin.js<br/>panel admin"]
+    subgraph Browser["Visitor's browser"]
+        L["index.html<br/>landing page"]
+        F["request.html + app.js<br/>form"]
+        A["admin.html + admin.js<br/>admin panel"]
     end
 
-    subgraph Hosting["Hosting estático (Vercel)"]
-        S["HTML, CSS, JS, fotos<br/>vercel.json: cabeceras de seguridad"]
+    subgraph Hosting["Static hosting (Vercel)"]
+        S["HTML, CSS, JS, photos<br/>vercel.json: security headers"]
     end
 
-    subgraph Google["Cuenta de Google del cliente"]
+    subgraph Google["Owner's Google account"]
         GS["Apps Script (Code.gs)<br/>Web App /exec"]
-        DR[("Drive<br/>carpetas y archivos")]
-        SH[("Sheets<br/>respuestas + configuración")]
-        MA["Gmail<br/>aviso por correo"]
-        PR["Propiedades y caché<br/>del script"]
+        DR[("Drive<br/>folders and files")]
+        SH[("Sheets<br/>responses + configuration")]
+        MA["Gmail<br/>notification email"]
+        PR["Script properties and cache"]
     end
 
     L --> S
@@ -62,315 +82,335 @@ flowchart LR
     GS --> PR
 ```
 
-**Por qué esta separación**
+**Why it is split this way**
 
-- El frontend se publica en cualquier hosting estático. Cambiar de hosting no toca los datos.
-- Los datos viven en la cuenta de Google del cliente: él es dueño de los archivos y de la hoja, no quien programó el sitio.
-- Lo único que une las dos mitades es la **URL del Web App** (`SCRIPT_URL`, en `config.js`).
+- The frontend can be published on any static host. Changing hosts never touches the data.
+- The data lives in the Google account of the owner of the business, not of whoever built the site.
+- The only link between the two halves is the **Web App URL** (`SCRIPT_URL` in `config.js`).
 
-**Decisiones de diseño que conviene conocer**
+**Design decisions worth knowing**
 
-| Decisión | Motivo |
+| Decision | Reason |
 |---|---|
-| Las peticiones usan `Content-Type: text/plain` | Evita la petición previa CORS (`OPTIONS`), que Apps Script no responde. El cuerpo sigue siendo JSON. |
-| Los archivos se suben por fragmentos de 8 MB | Una petición a Apps Script no puede pasar de ~50 MB, y se aceptan hasta 1 GB por campo. |
-| Las preguntas viven en la hoja, no en el código | El cliente las edita desde el panel. El código solo trae las de fábrica. |
-| El script se ejecuta como el dueño | Así los usuarios no necesitan cuenta de Google y los archivos ocupan el espacio del dueño. |
-| Todo en una sola cuenta de Google | Un único dueño del script, de la carpeta y de la hoja evita problemas de permisos. |
+| Requests use `Content-Type: text/plain` | It avoids the CORS preflight (`OPTIONS`) request, which Apps Script does not answer. The body is still JSON. |
+| Files are uploaded in 8 MB chunks | A request to Apps Script cannot exceed ~50 MB, and some fields accept up to 1 GB. |
+| Questions live in the sheet, not in the code | The owner edits them from the panel. The code only ships the factory ones. |
+| The script runs as its owner | Visitors do not need an account and the files use the owner's storage. |
+| Everything in one Google account | One owner for the script, the folder and the sheet avoids permission problems. |
 
-## 2. Estructura del repositorio
+## 3. Repository structure
 
-| Ruta | Qué es |
+| Path | What it is |
 |---|---|
-| `index.html`, `site.css`, `site.js` | Landing: portada, servicios, carrusel de pasos, preguntas frecuentes. |
-| `solicitud.html`, `styles.css`, `app.js` | Formulario público. Arma los campos con la configuración que le entrega el servidor. |
-| `admin.html`, `admin.css`, `admin.js` | Panel de administración: editor de preguntas, correos, fotos y contraseña. |
-| `config.js` | Única configuración del frontend: la URL del Web App. |
-| `vercel.json`, `.vercelignore` | Cabeceras de seguridad (CSP y otras) y archivos que no se publican. |
-| `assets/` | Fotos de la landing, banner y `credits.json` con la autoría de cada foto. |
-| `apps-script/Code.gs` | Todo el backend. |
-| `apps-script/appsscript.json` | Manifiesto: zona horaria, permisos (scopes) y modo del Web App. |
-| `FIX.md` | Guía de errores y soluciones. |
+| `index.html`, `site.css`, `site.js` | Landing page: cover, services, steps carousel, FAQ. |
+| `request.html`, `styles.css`, `app.js` | The public form. It builds its fields from the configuration the server returns. |
+| `admin.html`, `admin.css`, `admin.js` | Admin panel: question editor, emails, photos and password. |
+| `config.js` | The only frontend setting: the Web App URL (`window.APP_CONFIG.SCRIPT_URL`). |
+| `vercel.json`, `.vercelignore` | Security headers (CSP and others) and files that are not published. |
+| `assets/` | Landing photos, the banner and `credits.json` with the author of each photo. |
+| `apps-script/Code.gs` | The whole backend. |
+| `apps-script/appsscript.json` | Manifest: time zone, permissions (scopes) and Web App mode. |
+| `FIX.md` | Troubleshooting guide. |
 
-El código de `apps-script/` **no se publica** en el hosting (lo excluye `.vercelignore`); se copia a mano al editor de Apps Script.
+The `apps-script/` folder is **not** published by the host (`.vercelignore` excludes it): you copy it by hand into the Apps Script editor.
 
-## 3. Flujos
+## 4. Flows
 
-### 3.1 Envío de una solicitud
+### 4.1 Submitting a request
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor U as Usuario
-    participant W as solicitud.html + app.js
+    actor U as Visitor
+    participant W as request.html + app.js
     participant G as Apps Script
     participant D as Drive
     participant S as Sheets
     participant M as Gmail
 
-    U->>W: Abre el formulario
+    U->>W: Opens the form
     W->>G: getConfig
-    G->>S: Lee preguntas (pestaña oculta)
-    G-->>W: Secciones, preguntas, reglas de archivos, sugerencias
-    U->>W: Completa los 3 pasos y pulsa Enviar
-    W->>W: Valida cada paso en el navegador
-    W->>G: initRequest (nombre, CI, extensión)
-    G->>D: Busca o crea carpeta CI-EXT-INICIALES y subcarpetas
-    G-->>W: requestId + tamaño de fragmento
-    loop Cada archivo (hasta 3 a la vez)
-        W->>G: startUpload (nombre, tamaño, categoría)
-        G->>D: Abre sesión de subida reanudable
-        loop Cada fragmento de 8 MB
+    G->>S: Reads the questions (hidden tab)
+    G-->>W: Sections, questions, file rules, suggestions
+    U->>W: Fills in the 3 steps and presses Submit
+    W->>W: Validates each step in the browser
+    W->>G: initRequest (name, ID number, country)
+    G->>D: Finds or creates the folder ID-COUNTRY-INITIALS and its subfolders
+    G-->>W: requestId + chunk size
+    loop Each file (up to 3 at a time)
+        W->>G: startUpload (name, size, category)
+        G->>D: Opens a resumable upload session
+        loop Each 8 MB chunk
             W->>G: uploadChunk (base64)
-            G->>D: Reenvía el fragmento
+            G->>D: Forwards the chunk
         end
     end
-    W->>G: submit (respuestas + ids de subida)
-    G->>G: Valida y normaliza cada respuesta
-    G->>S: Agrega la fila (bajo candado)
-    G->>M: Aviso a los correos configurados
+    W->>G: submit (answers + upload ids)
+    G->>G: Validates and normalizes every answer
+    G->>S: Appends the row (under a lock)
+    G->>M: Notifies the configured emails
     G-->>W: received: true
-    W-->>U: Pantalla de confirmación
+    W-->>U: Confirmation screen
 ```
 
-Detalles que explican el comportamiento:
+Details that explain the behavior:
 
-- `initRequest` crea la carpeta **antes** de subir nada. Si el mismo carnet vuelve a enviar, reutiliza su carpeta (`user:<CI>-<EXT>` en las propiedades del script).
-- El primer fragmento de cada archivo se compara con la firma real del formato (PDF, JPG, PNG, WebP, HEIC, DOC, DOCX). Si no coincide, el servidor lo rechaza.
-- Si se corta la conexión, `app.js` pregunta con `uploadStatus` cuántos bytes recibió Drive y reanuda. Hasta 4 reintentos con espera creciente.
-- `submit` es idempotente: si la respuesta se pierde y el navegador reintenta, el servidor reconoce el `requestId` y no duplica la fila.
-- El correo de aviso se envía **después** de guardar la fila. Si falla, la solicitud igual queda registrada.
+- `initRequest` creates the folder **before** anything is uploaded. If the same ID submits again, its folder is reused (`user:<ID>-<COUNTRY>` in the script properties).
+- The first chunk of every file is compared with the real signature of its format (PDF, JPG, PNG, WebP, HEIC, DOC, DOCX). If it does not match, the server rejects the file.
+- If the connection drops, `app.js` asks Drive with `uploadStatus` how many bytes it received and resumes. Up to 4 retries with growing waits.
+- `submit` is idempotent: if the response is lost and the browser retries, the server recognizes the `requestId` and does not duplicate the row.
+- The notification email is sent **after** saving the row. If it fails, the request is still recorded.
 
-### 3.2 Panel de administración
+### 4.2 Admin panel
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor A as Administrador
+    actor A as Administrator
     participant P as admin.html + admin.js
     participant G as Apps Script
     participant S as Sheets
 
-    A->>P: Escribe la contraseña
+    A->>P: Types the password
     P->>G: adminLogin
-    G->>G: Compara SHA-256(sal + contraseña) con el hash guardado
-    G-->>P: token (válido 2 horas, en la caché del script)
+    G->>G: Compares SHA-256(salt + password) with the stored hash
+    G-->>P: token (valid for 2 hours, kept in the script cache)
     P->>G: adminGetConfig (token)
-    G-->>P: Preguntas, correos, enlaces, fotos
-    A->>P: Edita preguntas y pulsa Guardar
-    P->>G: adminSaveConfig (token + configuración)
-    G->>G: Sanea y valida todo lo recibido
-    G->>S: Guarda la configuración y ajusta columnas
-    G-->>P: Configuración guardada
+    G-->>P: Questions, emails, links, photos
+    A->>P: Edits questions and presses Save
+    P->>G: adminSaveConfig (token + configuration)
+    G->>G: Sanitizes and validates everything it received
+    G->>S: Saves the configuration and adjusts the columns
+    G-->>P: Configuration saved
 ```
 
-- La contraseña no se guarda: solo su hash con sal, en las propiedades del script.
-- Tras 20 intentos fallidos el login se bloquea 15 minutos.
-- Las fotos se cambian sin pasar por "Guardar": cada una se sube al instante (`adminUploadImage`) y puede restaurarse (`adminResetImage`).
+- The password is never stored: only its salted hash, in the script properties.
+- After 20 failed attempts the login is blocked for 15 minutes.
+- Photos are changed without "Save": each one is uploaded immediately (`adminUploadImage`) and can be restored (`adminResetImage`).
 
-### 3.3 Cómo llega una pregunta nueva al formulario
+### 4.3 How a new question reaches the form
 
-1. El administrador crea o edita una pregunta en el panel y guarda.
-2. El servidor valida el tipo y el contenido, asigna una columna nueva en la hoja si hace falta y actualiza el encabezado.
-3. La configuración se guarda en la celda `A1` de la pestaña oculta `Configuración`.
-4. El formulario la recibe la próxima vez que llama a `getConfig` (la caché del servidor dura 10 minutos y se renueva al guardar).
+1. The administrator creates or edits a question in the panel and saves.
+2. The server validates the type and content, assigns a new column in the sheet if needed and updates the header.
+3. The configuration is stored in cell `A1` of the hidden `Config` tab.
+4. The form receives it the next time it calls `getConfig` (the server cache lasts 10 minutes and is refreshed on save).
 
-### 3.4 Actualización de preguntas de fábrica
+### 4.4 Updating factory questions
 
-Si cambias el texto, el tipo o las opciones de una pregunta de fábrica en `Code.gs`, sube `CONFIG_VERSION`. La primera vez que el servidor lee la configuración, `migrateConfig_` actualiza esas preguntas ya guardadas, conservando si están activas u obligatorias, su sección y su orden. Los cambios hechos desde el panel a esas preguntas se reemplazan una vez.
+If you change the text, type or options of a factory question in `Code.gs`, bump `CONFIG_VERSION`. The first time the server reads the configuration, `migrateConfig_` updates those stored questions, keeping whether they are active or required, their section and their order. Changes made from the panel to those questions are replaced once.
 
-## 4. Modelo de datos
+## 5. Data model
 
 ### Google Drive
 
 ```
-Carpeta principal/                       ROOT_FOLDER_ID
-├── 1234567-LP-JP/                       una por persona: CI-extensión-iniciales
-│   ├── Identidad/
-│   ├── Guia/
-│   ├── Avance actual/
-│   └── Pago/                            solo si se activa el comprobante
-└── Sitio - Imágenes/                    fotos del sitio subidas desde el panel
+Main folder/                             ROOT_FOLDER_ID
+├── 1234567-BO-JP/                       one per person: ID number-country-initials
+│   ├── Identity/
+│   ├── Guide/
+│   ├── Current draft/
+│   └── Payment/                         only if the proof of payment is enabled
+└── Site - Images/                       site photos uploaded from the panel
 ```
 
-- Cada archivo se guarda con la fecha delante: `2026-10-25 - guia.pdf`.
-- Los correos de aviso reciben **acceso de editor a toda la carpeta principal**. Por eso esa carpeta debe ser de uso exclusivo de este sistema.
+- Each file is saved with the date in front: `2026-10-25 - guide.pdf`.
+- Notification emails receive **editor access to the whole main folder**. That is why the folder must be used only by this system.
 
 ### Google Sheets
 
-| Pestaña | Contenido |
+| Tab | Contents |
 |---|---|
-| `Respuestas` | Una fila por solicitud. Columnas: las preguntas en orden, y al final `ESTADO`, `DETALLE ESTADO`, `Carpeta del usuario`, `ID solicitud`. |
-| `Configuración` (oculta) | Celda `A1`: JSON con secciones, preguntas, columnas y correos de aviso. No se edita a mano. |
+| `Responses` | One row per request. Columns: the questions in order, then `STATUS`, `STATUS DETAIL`, `User folder`, `Request ID`. |
+| `Config` (hidden) | Cell `A1`: JSON with sections, questions, columns and notification emails. Do not edit it by hand. |
 
-Normalización antes de escribir:
+Normalization before writing:
 
-| Dato | Se guarda como |
+| Datum | Saved as |
 |---|---|
-| Nombre | Sin espacios sobrantes y con mayúscula inicial en cada palabra |
-| Celular | `+591` y 8 dígitos (acepta números internacionales con su `+código`) |
-| Carnet | Mayúsculas, sin espacios |
-| Ciudad y país | Solo letras. Si coincide con una sugerencia, con el nombre de la lista |
-| Universidad | Libre. Si coincide con una sugerencia, con su nombre oficial |
-| Fecha límite | Fecha real, no texto |
-| Texto que empieza con `=`, `+`, `-` o `@` | Texto (con apóstrofo previo), nunca fórmula |
+| Name | No extra spaces and a capital initial in every word |
+| Phone | `+<country code><number>`. A number typed with `+` is kept; a local number gets `PHONE_COUNTRY_CODE` |
+| ID number | Uppercase, no spaces |
+| City and country | Letters only. If it matches a suggestion, with the spelling of the list |
+| University | Free text. If it matches a suggestion, with its official spelling |
+| Deadline | A real date, not text |
+| Text starting with `=`, `+`, `-` or `@` | Text (with a leading apostrophe), never a formula |
 
-### Propiedades del script
+### Script properties
 
-| Propiedad | Uso |
+| Property | Use |
 |---|---|
-| `ROOT_FOLDER_ID` | Carpeta principal de Drive |
-| `SPREADSHEET_ID` | Hoja de respuestas |
-| `ADMIN_SALT`, `ADMIN_PASSWORD_HASH` | Contraseña del panel (hash con sal) |
-| `SITE_IMAGES` | Fotos del sitio cambiadas desde el panel |
-| `user:<CI>-<EXT>` | ID de la carpeta de cada persona |
+| `ROOT_FOLDER_ID` | Main Drive folder |
+| `SPREADSHEET_ID` | Responses spreadsheet |
+| `ADMIN_SALT`, `ADMIN_PASSWORD_HASH` | Panel password (salted hash) |
+| `SITE_IMAGES` | Site photos changed from the panel |
+| `user:<ID>-<COUNTRY>` | ID of each person's folder |
 
-### Caché del script
+### Script cache
 
-| Clave | Para qué | Dura |
+| Key | Purpose | Lasts |
 |---|---|---|
-| `config-v2` | Configuración de preguntas | 10 min |
-| `req:<id>` | Solicitud en curso (carpetas, CI) | 6 h |
-| `up:<id>` | Archivo en subida | 6 h |
-| `done:<id>` | Solicitud ya registrada (evita duplicados) | 6 h |
-| `admin:<token>` | Sesión del panel | 2 h |
-| `admin-fails` | Intentos fallidos del login | 15 min |
+| `config-v2` | Question configuration | 10 min |
+| `req:<id>` | Request in progress (folders, ID) | 6 h |
+| `up:<id>` | File being uploaded | 6 h |
+| `done:<id>` | Request already recorded (prevents duplicates) | 6 h |
+| `admin:<token>` | Panel session | 2 h |
+| `admin-fails` | Failed login attempts | 15 min |
 
-## 5. Puesta en marcha paso a paso
+## 6. Quick start
 
-### 5.1 Backend (Apps Script)
+### 6.1 Backend (Apps Script)
 
-Hazlo con la cuenta de Google que será dueña de los archivos.
+Do it with the Google account that will own the files.
 
-1. Entra a <https://script.google.com> y crea un proyecto nuevo.
-2. Pega el contenido de `apps-script/Code.gs` en `Código.gs`.
-3. En **Configuración del proyecto**, activa "Mostrar el archivo de manifiesto appsscript.json" y reemplaza su contenido por `apps-script/appsscript.json`.
-4. *(Opcional)* Para usar una hoja que ya existe, crea la propiedad `SPREADSHEET_ID` con su ID en **Propiedades del script** antes de seguir. Para usar una carpeta existente, `ROOT_FOLDER_ID`. Si no las creas, el código crea ambas.
-5. En el editor elige la función `setup` y pulsa **Ejecutar**. Acepta los permisos. Si Google dice "app no verificada", pulsa **Avanzado** y continúa.
-6. Abre el **Registro de ejecución**. Muestra el enlace de la carpeta, el de la hoja, el correo de aviso y la **contraseña inicial del panel**. Anótala: no se vuelve a mostrar (si la pierdes, ejecuta `resetAdminPassword`).
-7. **Implementar > Nueva implementación > Aplicación web**:
-   - Ejecutar como: **Yo**.
-   - Quién tiene acceso: **Cualquier persona** (no "cualquier persona con cuenta de Google").
-8. Copia la URL que termina en `/exec`.
+1. Go to <https://script.google.com> and create a new project.
+2. Paste the contents of `apps-script/Code.gs` into `Code.gs`.
+3. In **Project settings**, enable "Show appsscript.json manifest file in editor" and replace its contents with `apps-script/appsscript.json`.
+4. *(Optional)* To use an existing spreadsheet, create the property `SPREADSHEET_ID` with its ID in **Script properties** before continuing. For an existing folder, `ROOT_FOLDER_ID`. If you do not create them, the code creates both.
+5. In the editor choose the function `setup` and press **Run**. Accept the permissions. If Google says "app not verified", press **Advanced** and continue.
+6. Open the **Execution log**. It shows the folder link, the sheet link, the notification email and the **initial panel password**. Write it down: it is not shown again (if you lose it, run `resetAdminPassword`).
+7. **Deploy > New deployment > Web app**:
+   - Execute as: **Me**.
+   - Who has access: **Anyone** (not "Anyone with a Google account").
+8. Copy the URL that ends in `/exec`.
 
-Prueba rápida del backend:
+Quick test of the backend:
 
 ```bash
-curl -sL "https://script.google.com/macros/s/TU_ID/exec"
-# Respuesta esperada: {"ok":true,"data":{"service":"form-solicitudes"}}
+curl -sL "https://script.google.com/macros/s/YOUR_ID/exec"
+# Expected: {"ok":true,"data":{"service":"request-form"}}
 ```
 
-### 5.2 Frontend
+### 6.2 Frontend
 
-1. En `config.js`, reemplaza `SCRIPT_URL` por la URL `/exec`.
-2. Publica el repositorio en un hosting estático. Con Vercel:
-   - Importa el repositorio en <https://vercel.com/new>.
-   - Framework Preset: **Other**. Deja vacíos el comando de build, el directorio de salida y el de instalación.
-   - Pulsa **Deploy**. Cada `push` a `main` publica solo.
-3. Si Vercel te pide iniciar sesión para ver el sitio, desactiva **Deployment Protection** para producción en los ajustes del proyecto.
+1. In `config.js`, replace `SCRIPT_URL` with the `/exec` URL.
+2. Publish the repository on a static host. With Vercel:
+   - Import the repository at <https://vercel.com/new>.
+   - Framework Preset: **Other**. Leave the build command, output directory and install command empty.
+   - Press **Deploy**. Every `push` to `main` publishes on its own.
+3. If Vercel asks you to sign in to see the site, turn off **Deployment Protection** for production in the project settings.
 
-### 5.3 Primer arranque
+### 6.3 First run
 
-1. Abre `/admin.html` e ingresa con la contraseña inicial. Cámbiala (mínimo 8 caracteres).
-2. En **Correos de aviso** escribe los correos que deben enterarse de cada solicitud.
-3. Haz un envío de prueba con un carnet inventado. Comprueba que aparezcan la carpeta en Drive, la fila en la hoja y el correo.
-4. Borra los datos de prueba (carpeta y fila).
+1. Open `/admin.html` and sign in with the initial password. Change it (minimum 8 characters).
+2. In **Notification emails** type the emails that should hear about every request.
+3. Make a test submission with a made-up ID number. Check that the folder appears in Drive, the row in the sheet and the email.
+4. Delete the test data (folder and row).
 
-### 5.4 Dominio propio (opcional)
+### 6.4 Custom domain (optional)
 
-Registra el dominio a nombre del cliente. En el proyecto de Vercel, **Settings > Domains**, agrégalo y crea en tu proveedor de DNS los registros que Vercel indique. El `SCRIPT_URL` no cambia.
+Register the domain in the name of the business owner. In the Vercel project, **Settings > Domains**, add it and create at your DNS provider the records Vercel tells you. `SCRIPT_URL` does not change.
 
-## 6. Operación diaria
+## 7. Day-to-day operation
 
-| Quiero… | Dónde |
+| I want to... | Where |
 |---|---|
-| Cambiar, agregar, reordenar o desactivar preguntas | Panel > tarjetas de preguntas. Se editan como en Google Forms. |
-| Cambiar el tipo de una pregunta de fábrica | Panel. Solo dentro de su familia: respuesta corta ↔ párrafo; lista ↔ opción única ↔ casillas. Nombre, carnet, extensión y foto del carnet están bloqueados porque arman la carpeta. |
-| Cambiar los correos de aviso | Panel > Correos de aviso, uno por línea. Quien se agrega recibe acceso de editor a la carpeta principal; quien se quita lo pierde. |
-| Cambiar fotos del sitio | Panel > Fotos del sitio > Cambiar. Aplica al instante. "Restaurar" vuelve a la original. |
-| Activar el comprobante de pago | Panel > pregunta "Comprobante de pago" > Activa en el formulario > Guardar. |
-| Cambiar la contraseña | Panel > Cambiar contraseña. |
-| Recuperar la contraseña | Editor de Apps Script > función `resetAdminPassword` > Ejecutar > Registro de ejecución. |
-| Cambiar el estado de una solicitud | Hoja > columna `ESTADO`. |
+| Change, add, reorder or disable questions | Panel > question cards. They are edited like in Google Forms. |
+| Change the type of a factory question | Panel. Only within its family: short answer ↔ paragraph; dropdown ↔ single choice ↔ checkboxes. Full name, ID number, ID country and ID photo are locked because they build the folder. |
+| Change the notification emails | Panel > Notification emails, one per line. Whoever is added gets editor access to the main folder; whoever is removed loses it. |
+| Change site photos | Panel > Site photos > Change. It applies instantly. "Restore" goes back to the original. |
+| Enable the proof of payment | Panel > "Proof of payment" question > Active in the form > Save. |
+| Change the password | Panel > Change password. |
+| Recover the password | Apps Script editor > function `resetAdminPassword` > Run > Execution log. |
+| Change the status of a request | Sheet > `STATUS` column. |
 
-## 7. Desarrollo y cambios de código
+## 8. Adapting it to your own form
 
-### Probar el frontend en local
+1. **Your questions.** Edit `DEFAULT_CONFIG` in `Code.gs` (ids, labels, help, options, sections) or, after the first run, edit them from the panel. Question types: `text`, `textarea`, `number`, `date`, `select`, `radio`, `checkbox`, plus the special ones `tel`, `idnumber`, `pages`, `place` and `file`.
+2. **File fields.** Each `file` question has a `category`. Define its extensions, total size and number of files in `FILE_RULES`, and its Drive subfolder name in `SUBFOLDERS`.
+3. **Folder naming.** The folder is built in `findOrCreateUserFolder_` from the ID number, the ID country and the initials of the name. If your form identifies people differently, change that function and the locked questions (`fullName`, `idNumber`, `idExt`) together with the places where `initRequest` and `submit` read them.
+4. **Localization.** These defaults are Bolivian and easy to change:
+   - `TIMEZONE` in `Code.gs` and `timeZone` in `appsscript.json`.
+   - `PHONE_COUNTRY_CODE` (added to local phone numbers).
+   - The country codes in the `idExt` question and the lists in `SUGGESTIONS`.
+   - The Spanish name particles in `titleCase_` (`de`, `del`, `la`...).
+   - Every visible text: the HTML pages, `app.js`, `admin.js` and the messages in `Code.gs`.
+5. **Branding.** Replace the banner (`assets/banner.jpg`, 2000 × 492 px), the colors at the top of `site.css` and `styles.css`, and the copy in `index.html`.
+6. **Names of what `setup()` creates.** `ROOT_FOLDER_NAME`, `SPREADSHEET_NAME`, `SHEET_NAME`, `CONFIG_SHEET_NAME`.
+
+### Constants you may adjust in `Code.gs`
+
+| Constant | What it controls |
+|---|---|
+| `FILE_RULES` | Extensions, total size and number of files per field. The form receives them from the server. |
+| `SUGGESTIONS` | Suggestion lists (universities, cities). |
+| `DEFAULT_CONFIG` | Factory questions and sections. When you change them, bump `CONFIG_VERSION`. |
+| `SITE_SLOTS` | Identifiers of the editable photos. They must match the `data-slot` attributes in `index.html`. |
+| `CHUNK_SIZE`, `MAX_QUESTIONS`, `MAX_OPTIONS`, `ADMIN_MAX_FAILS`, TTL constants | Technical limits. |
+
+### Adding an editable photo
+
+1. In `index.html`, add `data-slot="new-id"` and `data-slot-label="Visible name"` to the `<img>` tag.
+2. Add `'new-id'` to `SITE_SLOTS` in `Code.gs` and publish a new version of the backend.
+
+## 9. Development and code changes
+
+### Test the frontend locally
 
 ```bash
 python -m http.server 8765
-# abre http://localhost:8765/
+# open http://localhost:8765/
 ```
 
-Hacen falta archivos servidos por HTTP: abrir los HTML con doble clic no sirve, porque el navegador bloquea las peticiones al backend.
+The files must be served over HTTP: opening the HTML files by double click does not work, because the browser blocks the requests to the backend.
 
-### Cambiar el backend
+### Change the backend
 
-1. Edita `apps-script/Code.gs`.
-2. Cópialo completo al editor de Apps Script y guarda.
-3. **Implementar > Gestionar implementaciones**, lápiz de la implementación existente, **Versión: Nueva versión**, **Implementar**. Si usas "Nueva implementación", la URL cambia.
-4. Guardar el código **no** publica los cambios: el Web App sirve la última *versión* implementada.
+1. Edit `apps-script/Code.gs`.
+2. Copy it whole into the Apps Script editor and save.
+3. **Deploy > Manage deployments**, pencil on the existing deployment, **Version: New version**, **Deploy**. If you use "New deployment", the URL changes.
+4. Saving the code does **not** publish the changes: the Web App serves the last *deployed version*.
 
-### Constantes que se ajustan en `Code.gs`
+### Security headers
 
-| Constante | Qué controla |
+`vercel.json` defines a strict content policy: it only lets the page load scripts from the site itself, styles from Google Fonts, and connections to the site itself and to Apps Script. If you add an external service (analytics, maps, videos), you must add it there or the browser will block it. See [FIX.md](FIX.md#the-page-has-no-styles-photos-or-data-in-production).
+
+## 10. Security
+
+| Risk | How it is handled |
 |---|---|
-| `FILE_RULES` | Extensiones, tamaño total y cantidad de archivos por campo. El formulario las recibe del servidor. |
-| `SUGGESTIONS` | Listas de sugerencias (universidades, ciudades). |
-| `DEFAULT_CONFIG` | Preguntas y secciones de fábrica. Al cambiarlas, sube `CONFIG_VERSION`. |
-| `SITE_SLOTS` | Identificadores de las fotos editables. Deben coincidir con los `data-slot` de `index.html`. |
-| `TIMEZONE`, `ROOT_FOLDER_NAME`, `SPREADSHEET_NAME`, `SHEET_NAME` | Zona horaria y nombres de lo que crea `setup()`. |
+| Credentials in the frontend | There are none. `config.js` only holds the Web App URL, which is public by design. The panel password lives as a salted hash in the script properties. |
+| Malicious files | Extension list, maximum sizes and comparison of the first chunk with the real format signature. Files are never executed or published. Drive scans them with its antivirus when downloaded. |
+| Formula injection in the sheet | Text starting with `=`, `+`, `-` or `@` is saved as text. |
+| XSS | The frontend does not use `innerHTML`. The notification email escapes user content. The CSP blocks foreign scripts. |
+| Path traversal | Not applicable: Drive does not use paths. File names are stripped of slashes and control characters. |
+| SQL injection | Not applicable: there is no database. |
+| Brute force on the panel | 15-minute block after 20 failed attempts. |
+| Spam | A honeypot field in the form. There is no captcha: see the limits below. |
+| Photo uploads to the site | Only JPG, PNG or WebP images, checked by their first bytes, up to 6 MB; only those files are shared by link. |
 
-### Agregar una foto editable
+Known limitations:
 
-1. En `index.html`, agrega `data-slot="id-nuevo"` y `data-slot-label="Nombre visible"` a la etiqueta `<img>`.
-2. Agrega `'id-nuevo'` a `SITE_SLOTS` en `Code.gs` y publica una nueva versión del backend.
+- A bot could fill the Drive by sending requests. The defense would be a captcha (for example Cloudflare Turnstile) verified on the server.
+- The login block is global: someone could trigger it to lock the administrator out for 15 minutes.
+- `.doc` (the old Word format) can contain macros. If you do not need it, remove it from `EXT_DOCS` in `Code.gs`.
 
-### Cabeceras de seguridad
+## 11. Limits and quotas
 
-`vercel.json` define una política de contenido estricta: solo permite cargar scripts del propio sitio, estilos de Google Fonts, y conexiones al propio sitio y a Apps Script. Si agregas un servicio externo (analítica, mapas, vídeos), hay que añadirlo ahí o el navegador lo bloqueará. Ver [FIX.md](FIX.md#la-página-se-ve-sin-estilos-sin-fotos-o-sin-datos-en-producción).
-
-## 8. Seguridad
-
-| Riesgo | Cómo se controla |
+| Item | Value |
 |---|---|
-| Credenciales en el frontend | No hay ninguna. `config.js` solo tiene la URL del Web App, que es pública por diseño. La contraseña del panel vive como hash con sal en las propiedades del script. |
-| Archivos maliciosos | Lista de extensiones, tamaños máximos y comparación del primer fragmento con la firma real del formato. Los archivos nunca se ejecutan ni se publican. Drive los revisa con su antivirus al descargarlos. |
-| Inyección de fórmulas en la hoja | El texto que empieza con `=`, `+`, `-` o `@` se guarda como texto. |
-| XSS | El frontend no usa `innerHTML`. El correo de aviso escapa el contenido del usuario. La CSP bloquea scripts ajenos. |
-| Recorrido de rutas | No aplica: Drive no usa rutas. Los nombres de archivo se limpian de barras y caracteres de control. |
-| Inyección SQL | No aplica: no hay base de datos. |
-| Fuerza bruta en el panel | Bloqueo de 15 minutos tras 20 intentos fallidos. |
-| Spam | Campo trampa (*honeypot*) en el formulario. No hay captcha: ver límites. |
-| Subir fotos al sitio | Solo imágenes JPG, PNG o WebP, verificadas por sus primeros bytes, de hasta 6 MB; solo esos archivos se comparten por enlace. |
+| ID photo | 2 files, 10 MB in total |
+| Institutional guide and current draft | 20 files and 1 GB in total, each |
+| Proof of payment | 1 file, 10 MB |
+| Site photos | 6 MB per image (the browser shrinks them to 1600 px) |
+| Questions | Maximum 60, with up to 40 options each |
+| Notification emails | Maximum 10 |
+| Storage | That of the Google account that owns the script (15 GB free, shared with Gmail and Photos) |
+| Apps Script emails | Daily Google quota depending on the account type (about 100 recipients a day on personal accounts) |
+| Time per execution | 6 minutes, enough for each individual request |
 
-Limitaciones conocidas:
+## 12. Moving to another Google account
 
-- Un bot podría llenar el Drive enviando solicitudes. La defensa sería un captcha (por ejemplo Cloudflare Turnstile) verificado en el servidor.
-- El bloqueo del login es global: alguien podría provocarlo para dejar fuera al administrador durante 15 minutos.
-- `.doc` (formato antiguo de Word) puede contener macros. Si no lo necesitas, quítalo de `EXT_DOCS` en `Code.gs`.
+The files use the storage of the account that owns the script, so sharing a folder is not enough: the script must live in the destination account.
 
-## 9. Límites y cuotas
+1. With the destination account, repeat 6.1. To keep the history, first create `SPREADSHEET_ID` with the existing sheet (the destination account needs editor access to it).
+2. In `config.js`, change `SCRIPT_URL` to the new `/exec` URL and publish. It is the only change in the site.
+3. Sign in to the panel with the new password, change it and review the notification emails (the list travels with the sheet).
+4. Archive the old deployment (**Manage deployments > Archive**) so it stops writing to the previous account.
+5. Folders of previous users stay where they were. Old rows in the sheet keep their links; new ones point to the destination account.
+6. Site photos changed from the panel live in the previous account's Drive. Upload them again, or the ones in `assets/` are used.
 
-| Concepto | Valor |
-|---|---|
-| Fotografía de carnet | 2 archivos, 10 MB en total |
-| Guía institucional y avance actual | 20 archivos y 1 GB en total, cada uno |
-| Comprobante de pago | 1 archivo, 10 MB |
-| Fotos del sitio | 6 MB por imagen (el navegador las reduce a 1600 px) |
-| Preguntas | Máximo 60, con hasta 40 opciones cada una |
-| Correos de aviso | Máximo 10 |
-| Espacio | El de la cuenta de Google dueña del script (15 GB gratis, compartidos con Gmail y Fotos) |
-| Correos de Apps Script | Cuota diaria de Google según el tipo de cuenta (en cuentas personales, del orden de 100 destinatarios por día) |
-| Tiempo por ejecución | 6 minutos, suficiente para cada petición individual |
+## 13. License
 
-## 10. Migrar a otra cuenta de Google
+The **code** of this repository is released under the [MIT License](LICENSE): you can use, copy, modify and distribute it, including in commercial projects, as long as you keep the copyright notice.
 
-Los archivos ocupan el espacio de la cuenta dueña del script, así que compartir una carpeta no basta: el script debe vivir en la cuenta destino.
-
-1. Con la cuenta destino, repite 5.1. Para conservar el historial, crea antes `SPREADSHEET_ID` con la hoja existente (la cuenta destino debe tener acceso de editor a ella).
-2. En `config.js`, cambia `SCRIPT_URL` por la nueva URL `/exec` y publica. Es el único cambio en el sitio.
-3. Entra al panel con la contraseña nueva, cambia la contraseña y revisa los correos de aviso (la lista viaja con la hoja).
-4. Archiva la implementación vieja (**Gestionar implementaciones > Archivar**) para que no siga escribiendo en la cuenta anterior.
-5. Las carpetas de usuarios anteriores siguen donde estaban. Las filas viejas de la hoja conservan sus enlaces; las nuevas apuntan a la carpeta de la cuenta destino.
-6. Las fotos del sitio cambiadas desde el panel viven en el Drive de la cuenta anterior. Hay que volver a subirlas, o se usan las de `assets/`.
+The **photographs** in `assets/` are third-party works under their own Creative Commons licenses. The author and license of each one are in `assets/credits.json` and are shown in the page footer. Some of them require attribution or share-alike. Replace them with your own photos before using this template for a real business.

@@ -1,460 +1,459 @@
-# FIX — errores conocidos y cómo resolverlos
+# FIX — known errors and how to solve them
 
-Guía de diagnóstico del formulario, el panel de administración y el backend de Apps Script. Para entender cómo encajan las piezas, lee antes el [README](README.md).
+Troubleshooting guide for the form, the admin panel and the Apps Script backend. To understand how the pieces fit together, read the [README](README.md) first.
 
-## Contenido
+## Contents
 
-- [Cómo diagnosticar](#cómo-diagnosticar)
-- [Backend y despliegue de Apps Script](#backend-y-despliegue-de-apps-script)
-- [Formulario y subida de archivos](#formulario-y-subida-de-archivos)
-- [Panel de administración](#panel-de-administración)
-- [Hoja de Google Sheets](#hoja-de-google-sheets)
-- [Drive y correos de aviso](#drive-y-correos-de-aviso)
-- [Frontend y hosting (Vercel)](#frontend-y-hosting-vercel)
-- [Git y terminal en Windows](#git-y-terminal-en-windows)
-- [Lista de comprobación después de cualquier cambio](#lista-de-comprobación-después-de-cualquier-cambio)
+- [How to diagnose](#how-to-diagnose)
+- [Backend and Apps Script deployment](#backend-and-apps-script-deployment)
+- [Form and file uploads](#form-and-file-uploads)
+- [Admin panel](#admin-panel)
+- [Google Sheets](#google-sheets)
+- [Drive and notification emails](#drive-and-notification-emails)
+- [Frontend and hosting (Vercel)](#frontend-and-hosting-vercel)
+- [Git and the Windows terminal](#git-and-the-windows-terminal)
+- [Checklist after any change](#checklist-after-any-change)
 
 ---
 
-## Cómo diagnosticar
+## How to diagnose
 
-Cuando algo falla, el mensaje que ve el usuario suele ser genérico. La causa real está en uno de estos cuatro sitios, en este orden:
+When something fails, the message the visitor sees is often generic. The real cause is in one of these four places, in this order:
 
-1. **El mensaje en pantalla.** Muchos errores son específicos ("Tipo de archivo no permitido", "Contraseña incorrecta"). Búscalo en este documento con Ctrl+F.
-2. **Apps Script > Ejecuciones** (icono de reloj, a la izquierda). Cada petición del formulario es una ejecución de `doPost`. Importante: **`doPost` aparece como "Completada" aunque haya fallado**, porque el servidor captura el error y se lo devuelve al navegador. Haz clic en la ejecución y busca en el registro una línea de nivel **Error**: ahí está la causa real.
-3. **La consola del navegador** (F12 > Consola y Red). Muestra bloqueos de la política de contenido, errores de red y la respuesta exacta del servidor.
-4. **Una petición directa con `curl`**, para saber si el problema es del backend o del sitio:
+1. **The message on screen.** Many errors are specific ("File type not allowed", "Wrong password"). Search for it in this document with Ctrl+F.
+2. **Apps Script > Executions** (clock icon, on the left). Every request from the form is an execution of `doPost`. Important: **`doPost` shows as "Completed" even when it failed**, because the server catches the error and returns it to the browser. Click the execution and look in the log for a line of level **Error**: the real cause is there.
+3. **The browser console** (F12 > Console and Network). It shows content policy blocks, network errors and the exact response of the server.
+4. **A direct `curl` request**, to know whether the problem is in the backend or in the site:
 
 ```bash
-# El backend responde (debe devolver ok:true)
-curl -sL "https://script.google.com/macros/s/TU_ID/exec"
+# The backend answers (it must return ok:true)
+curl -sL "https://script.google.com/macros/s/YOUR_ID/exec"
 
-# El backend entrega las preguntas del formulario
-curl -sL -H "Content-Type: text/plain" -d '{"action":"getConfig"}' "https://script.google.com/macros/s/TU_ID/exec"
+# The backend returns the questions of the form
+curl -sL -H "Content-Type: text/plain" -d '{"action":"getConfig"}' "https://script.google.com/macros/s/YOUR_ID/exec"
 ```
 
-Interpretación rápida del primer comando:
+How to read the first command:
 
-| Respuesta | Significado |
+| Response | Meaning |
 |---|---|
-| `{"ok":true,"data":{"service":"form-solicitudes"}}` | El backend está bien. El problema está en otro lado. |
-| HTML de inicio de sesión de Google (`accounts.google.com`) | La implementación no es pública. Ver [el formulario no carga](#no-se-pudo-cargar-el-formulario-no-hay-conexión-con-el-servidor). |
-| HTML con "No se encontró la función de la secuencia de comandos: doGet" | El código no está publicado. Ver [no se encontró la función](#no-se-encontró-la-función-de-la-secuencia-de-comandos-doget--dopost). |
-| Error 404 de Google | La URL es incorrecta o la implementación fue archivada. |
+| `{"ok":true,"data":{"service":"request-form"}}` | The backend is fine. The problem is elsewhere. |
+| Google sign-in HTML (`accounts.google.com`) | The deployment is not public. See [the form does not load](#the-form-could-not-be-loaded-cannot-reach-the-server). |
+| HTML saying "Script function not found: doGet" | The code is not deployed. See [script function not found](#script-function-not-found-doget--dopost). |
+| A Google 404 error | The URL is wrong or the deployment was archived. |
 
 ---
 
-## Backend y despliegue de Apps Script
+## Backend and Apps Script deployment
 
-### No se pudo cargar el formulario. No hay conexión con el servidor.
+### The form could not be loaded. Cannot reach the server.
 
-**Síntoma.** El formulario muestra ese mensaje al abrirse, aunque haya internet.
+**Symptom.** The form shows that message when it opens, even with a working internet connection.
 
-**Causas frecuentes**
+**Common causes**
 
-- La implementación de Apps Script no es pública. Una petición recibe la página de inicio de sesión de Google, no JSON. Es la causa más común.
-- `config.js` todavía tiene el texto `PEGAR_AQUI_LA_URL_DEL_WEB_APP` o una URL con un error de tipeo.
-- Una extensión del navegador (bloqueador de anuncios, privacidad) bloquea `script.google.com`.
-- En producción, la política de contenido (`vercel.json`) bloquea la conexión. Ver [la página se ve sin estilos](#la-página-se-ve-sin-estilos-sin-fotos-o-sin-datos-en-producción).
+- The Apps Script deployment is not public. A request receives the Google sign-in page instead of JSON. This is the most common cause.
+- `config.js` still has the text `PASTE_THE_WEB_APP_URL_HERE` or a URL with a typo.
+- A browser extension (ad blocker, privacy tool) blocks `script.google.com`.
+- In production, the content policy (`vercel.json`) blocks the connection. See [the page has no styles](#the-page-has-no-styles-photos-or-data-in-production).
 
-**Solución**
+**Solution**
 
-1. Prueba el `curl` de arriba.
-2. Si devuelve la página de Google: en Apps Script, **Implementar > Gestionar implementaciones**, lápiz. Pon **Ejecutar como: Yo** y **Quién tiene acceso: Cualquier persona**. En Versión elige **Nueva versión** y pulsa **Implementar**. La URL no cambia.
-3. Si la cuenta es de un dominio de Google Workspace y la opción "Cualquier persona" no aparece, el administrador del dominio la tiene bloqueada. Hay que habilitarla en la consola de administración, o usar una cuenta de Gmail personal.
+1. Run the `curl` above.
+2. If it returns the Google page: in Apps Script, **Deploy > Manage deployments**, pencil. Set **Execute as: Me** and **Who has access: Anyone**. In Version choose **New version** and press **Deploy**. The URL does not change.
+3. If the account belongs to a Google Workspace domain and the option "Anyone" does not appear, the domain administrator has it blocked. It must be enabled in the admin console, or use a personal Gmail account.
 
-### No se encontró la función de la secuencia de comandos: doGet / doPost
+### Script function not found: doGet / doPost
 
-**Síntoma.** El `curl` o el navegador muestran esa frase en una página de Google.
+**Symptom.** The `curl` or the browser shows that sentence on a Google page (the text is translated into the language of the account).
 
-**Causa.** La implementación no tiene el código de `Code.gs`: nunca se pegó, se guardó pero no se publicó una versión nueva, o la URL pertenece a otro proyecto.
+**Cause.** The deployment does not have the code of `Code.gs`: it was never pasted, it was saved but no new version was deployed, or the URL belongs to another project.
 
-**Solución**
+**Solution**
 
-1. Abre el proyecto, `Código.gs`, y comprueba que contiene `function doGet()`. Si no, pega `apps-script/Code.gs` completo y guarda.
-2. **Implementar > Gestionar implementaciones**, lápiz, **Nueva versión**, **Implementar**.
-3. Comprueba que la URL de esa implementación sea la de `config.js`.
+1. Open the project, `Code.gs`, and check that it contains `function doGet()`. If not, paste the whole `apps-script/Code.gs` and save.
+2. **Deploy > Manage deployments**, pencil, **New version**, **Deploy**.
+3. Check that the URL of that deployment is the one in `config.js`.
 
-> Guardar el código **no** lo publica. El Web App sirve la última *versión* implementada.
+> Saving the code does **not** publish it. The Web App serves the last deployed *version*.
 
-### ReferenceError: window is not defined (en un archivo `.gs`)
+### ReferenceError: window is not defined (in a `.gs` file)
 
-**Síntoma.** En Ejecuciones aparece `ReferenceError: window is not defined`, con un archivo como `app.js.gs`. Pueden fallar todas las peticiones.
+**Symptom.** In Executions you see `ReferenceError: window is not defined`, with a file such as `app.js.gs`. All requests may fail.
 
-**Causa.** Se pegó por error un archivo del frontend (`app.js`, `config.js`, `admin.js`) como archivo de Apps Script. Apps Script ejecuta el código de **todos** los archivos `.gs` al arrancar cada petición, y `window` no existe ahí.
+**Cause.** A frontend file (`app.js`, `config.js`, `admin.js`) was pasted into Apps Script by mistake. Apps Script runs the code of **all** `.gs` files when it starts every request, and `window` does not exist there.
 
-**Solución.** Borra ese archivo del proyecto de Apps Script. Deben quedar solo `Código.gs` y `appsscript.json`. Crea una Nueva versión de la implementación.
+**Solution.** Delete that file from the Apps Script project. Only `Code.gs` and `appsscript.json` must remain. Create a New version of the deployment.
 
-### Los permisos especificados no son suficientes para llamar a Session.getEffectiveUser
+### The specified permissions are not sufficient to call Session.getEffectiveUser
 
-**Síntoma.** `setup()` o el guardado del panel fallan con `Exception: Los permisos especificados no son suficientes para llamar a Session.getEffectiveUser. Permisos necesarios: https://www.googleapis.com/auth/userinfo.email`.
+**Symptom.** `setup()` or saving from the panel fails with `Exception: The specified permissions are not sufficient to call Session.getEffectiveUser. Required permissions: https://www.googleapis.com/auth/userinfo.email`.
 
-**Causa.** Al manifiesto le falta el permiso `userinfo.email`.
+**Cause.** The manifest is missing the `userinfo.email` permission.
 
-**Solución**
+**Solution**
 
-1. En **Configuración del proyecto**, activa "Mostrar el archivo de manifiesto appsscript.json".
-2. En `oauthScopes` deben estar estos cinco permisos:
+1. In **Project settings**, enable "Show appsscript.json manifest file in editor".
+2. `oauthScopes` must contain these five permissions:
    - `https://www.googleapis.com/auth/drive`
    - `https://www.googleapis.com/auth/spreadsheets`
    - `https://www.googleapis.com/auth/script.external_request`
    - `https://www.googleapis.com/auth/script.send_mail`
    - `https://www.googleapis.com/auth/userinfo.email`
-3. Guarda, ejecuta `setup` otra vez y acepta los permisos nuevos.
-4. Crea una **Nueva versión** de la implementación.
+3. Save, run `setup` again and accept the new permissions.
+4. Create a **New version** of the deployment.
 
-### Pedí cambios en Code.gs y el sitio se comporta igual
+### I changed Code.gs and the site behaves the same
 
-**Causa.** Guardar no publica. O el navegador/servidor tiene la configuración anterior en caché.
+**Cause.** Saving does not publish. Or the browser / server holds the previous configuration in cache.
 
-**Solución**
+**Solution**
 
-1. **Implementar > Gestionar implementaciones > lápiz > Nueva versión > Implementar**.
-2. La configuración de preguntas se guarda 10 minutos en la caché del servidor. Espera o guarda cualquier cambio en el panel, que la renueva.
-3. En el navegador, recarga ignorando la caché: **Ctrl+Shift+R**.
+1. **Deploy > Manage deployments > pencil > New version > Deploy**.
+2. The question configuration is kept for 10 minutes in the server cache. Wait, or save any change in the panel, which renews it.
+3. In the browser, reload ignoring the cache: **Ctrl+Shift+R**.
 
-### Falta la propiedad X. Ejecuta setup().
+### The property X is missing. Run setup().
 
-**Causa.** El script busca una propiedad (`SPREADSHEET_ID` o `ROOT_FOLDER_ID`) que no existe en **Propiedades del script**. Pasa en un proyecto nuevo donde no se ejecutó `setup()`, o si se borraron las propiedades.
+**Cause.** The script looks for a property (`SPREADSHEET_ID` or `ROOT_FOLDER_ID`) that does not exist in **Script properties**. It happens in a new project where `setup()` has not run, or if the properties were deleted.
 
-**Solución.** Ejecuta `setup()`. Si quieres usar una hoja o carpeta existente, crea antes la propiedad con su ID.
+**Solution.** Run `setup()`. If you want to use an existing sheet or folder, create the property with its ID first.
 
-### No existe la pestaña "Respuestas". Ejecuta setup().
+### The tab "Responses" does not exist. Run setup().
 
-**Causa.** `SPREADSHEET_ID` apunta a una hoja donde la pestaña no existe: tiene otro nombre, o es otra hoja (por ejemplo, una de prueba).
+**Cause.** `SPREADSHEET_ID` points to a spreadsheet where the tab does not exist: it has another name, or it is another spreadsheet (for example, a test one).
 
-**Solución**
+**Solution**
 
-1. Comprueba que `SPREADSHEET_ID` sea el ID de la hoja correcta (la parte de la URL entre `/d/` y `/edit`).
-2. Comprueba que la pestaña se llame **exactamente** como `SHEET_NAME` en `Code.gs`, o ajusta la constante.
-3. Ejecuta `setup()` de nuevo: crea las pestañas que falten sin tocar los datos.
+1. Check that `SPREADSHEET_ID` is the ID of the right spreadsheet (the part of the URL between `/d/` and `/edit`).
+2. Check that the tab is named **exactly** like `SHEET_NAME` in `Code.gs`, or change the constant.
+3. Run `setup()` again: it creates the missing tabs without touching the data.
 
-### No se puede abrir la hoja (error de acceso a un documento)
+### The spreadsheet cannot be opened (access error)
 
-**Síntoma.** En el registro aparece un error al abrir el documento, o `No tienes permiso para acceder al documento`.
+**Symptom.** The log shows an error opening the document, or `You do not have permission to access the document`.
 
-**Causa.** La cuenta que ejecuta el script no tiene acceso de **editor** a la hoja de `SPREADSHEET_ID`. Es típico al migrar a otra cuenta.
+**Cause.** The account that runs the script does not have **editor** access to the spreadsheet in `SPREADSHEET_ID`. It is typical when migrating to another account.
 
-**Solución.** Desde la cuenta dueña de la hoja, compártela como editor con la cuenta del script. Después vuelve a ejecutar `setup()`.
+**Solution.** From the account that owns the spreadsheet, share it as editor with the account of the script. Then run `setup()` again.
 
-### Error temporal del servidor. Intenta de nuevo.
+### Temporary server error. Please try again.
 
-**Síntoma.** El formulario falla al enviar con ese texto, a veces tras esperar un buen rato en 100 %.
+**Symptom.** The form fails when submitting with that text, sometimes after waiting a long time at 100 %.
 
-**Causa.** Es el mensaje genérico cuando el servidor lanzó un error que no es de validación. **La causa real está en el registro de la ejecución** (ver [Cómo diagnosticar](#cómo-diagnosticar)). Las más comunes:
+**Cause.** It is the generic message when the server threw an error that is not a validation error. **The real cause is in the log of the execution** (see [How to diagnose](#how-to-diagnose)). The most common ones:
 
-| Línea del registro | Qué hacer |
+| Line in the log | What to do |
 |---|---|
-| `Falta la propiedad …` | Ver [Falta la propiedad](#falta-la-propiedad-x-ejecuta-setup) |
-| `No existe la pestaña …` | Ver [No existe la pestaña](#no-existe-la-pestaña-respuestas-activa-ejecuta-setup) |
-| Error de acceso al documento | Ver [No se puede abrir la hoja](#no-se-puede-abrir-la-hoja-error-de-acceso-a-un-documento) |
-| `La fila N de "…" quedó vacía tras escribirla` | Ver [La fila quedó vacía](#la-fila-n-quedó-vacía-tras-escribirla) |
-| `No se pudo obtener el bloqueo` | Otra ejecución estaba escribiendo. Reintenta en un minuto. |
-| `Drive respondió …` | Error de Drive: cuota, almacenamiento lleno o archivo borrado. Ver [Drive](#drive-y-correos-de-aviso) |
-| `Service invoked too many times` o cuota de correo | Se alcanzó una cuota diaria de Google. Espera 24 horas o reduce el volumen. |
+| `The property … is missing` | See [The property X is missing](#the-property-x-is-missing-run-setup) |
+| `The tab … does not exist` | See [The tab does not exist](#the-tab-responses-does-not-exist-run-setup) |
+| Error accessing the document | See [The spreadsheet cannot be opened](#the-spreadsheet-cannot-be-opened-access-error) |
+| `Row N of "…" was empty after writing it` | See [The row was empty](#row-n-was-empty-after-writing-it) |
+| `Could not obtain lock` | Another execution was writing. Try again in a minute. |
+| `Drive responded …` | Drive error: quota, full storage or deleted file. See [Drive](#drive-and-notification-emails) |
+| `Service invoked too many times` or an email quota error | A daily Google quota was reached. Wait 24 hours or reduce the volume. |
 
-### La fila N quedó vacía tras escribirla
+### Row N was empty after writing it
 
-**Causa.** La hoja descartó la escritura sin dar error: una protección de rango, una validación estricta o un filtro de la hoja impiden escribir en esa fila.
+**Cause.** The sheet discarded the write without an error: a protected range, a strict validation or a filter prevents writing in that row.
 
-**Solución.** Revisa **Datos > Hojas y rangos protegidos** y las validaciones de datos de la pestaña de respuestas. El script debe poder editar toda la fila.
+**Solution.** Check **Data > Protected sheets and ranges** and the data validations of the responses tab. The script must be able to edit the whole row.
 
-### El formulario dice que se envió, pero no aparece la fila
+### The form says it was sent, but the row does not appear
 
-**Causas posibles**
+**Possible causes**
 
-1. **`SPREADSHEET_ID` apunta a otra hoja.** El correo de aviso trae el botón "Abrir hoja de respuestas" que apunta a la hoja que usa el script. Ábrelo y busca ahí.
-2. **Duplicado detectado.** Si el navegador reintentó con el mismo identificador de solicitud, el servidor responde "recibido" sin escribir otra vez. Recarga la página para empezar una solicitud nueva.
-3. **La fila se borró o se movió.** Revisa el historial de versiones de la hoja (**Archivo > Historial de versiones**).
-4. **Se escribió en otra pestaña** por un nombre de pestaña parecido. Comprueba `SHEET_NAME`.
+1. **`SPREADSHEET_ID` points to another spreadsheet.** The notification email has an "Open responses sheet" button that points to the sheet the script uses. Open it and look there.
+2. **Duplicate detected.** If the browser retried with the same request identifier, the server answers "received" without writing again. Reload the page to start a new request.
+3. **The row was deleted or moved.** Check the version history of the sheet (**File > Version history**).
+4. **It was written to another tab** because of a similar tab name. Check `SHEET_NAME`.
 
-### Exception: No puedes configurar el formato de número de las celdas de una columna con texto
+### Exception: You cannot set the number format of the cells of a text column
 
-**Causa.** La pestaña es una *tabla* de Google Sheets cuyas columnas tienen tipo propio, y el código intentó dar un formato de número a la fila nueva. Sheets lo rechaza, a veces con retraso.
+**Cause.** The tab is a Google Sheets *table* whose columns have their own type, and the code tried to give a number format to the new row. Sheets rejects it, sometimes with a delay.
 
-**Solución.** El código actual **no** aplica formatos por fila (solo escribe valores), así que si el error reaparece hay código modificado que llama a `setNumberFormat` o `setNumberFormats` en la fila nueva. Quita esa llamada.
+**Solution.** The current code does **not** apply formats per row (it only writes values), so if the error comes back there is modified code calling `setNumberFormat` or `setNumberFormats` on the new row. Remove that call.
 
-### Lock timeout / el panel o el formulario se cuelgan
+### Lock timeout / the panel or the form hang
 
-**Causa.** Varias ejecuciones pelean por el candado del script (se usa al crear carpetas, agregar filas y guardar la configuración). Una ejecución atascada retiene el candado hasta 30 segundos.
+**Cause.** Several executions fight for the script lock (it is used when creating folders, appending rows and saving the configuration). A stuck execution holds the lock for up to 30 seconds.
 
-**Solución.** Espera un minuto y reintenta. Si se repite, revisa Ejecuciones para ver cuál se quedó colgada y qué la bloquea.
+**Solution.** Wait a minute and try again. If it repeats, check Executions to see which one is stuck and what is blocking it.
 
 ---
 
-## Formulario y subida de archivos
+## Form and file uploads
 
-### Mensajes de validación del formulario
+### Validation messages of the form
 
-| Mensaje | Causa y solución |
+| Message | Cause and solution |
 |---|---|
-| `Falta: …` / `Este campo es obligatorio.` | Campo obligatorio vacío. |
-| `Selecciona una opción.` | Una pregunta de opción única o lista no tiene selección. |
-| `Especifica la opción "Otro".` | Se marcó "Otro" sin escribir cuál. |
-| `Escribe 8 dígitos que empiecen con 6 o 7, o un número internacional con + y el código de país.` | Celular inválido. Ejemplos válidos: `71234567`, `+59171234567`. |
-| `Usa solo letras, sin números.` | Ciudad o país con dígitos o símbolos. |
-| `La fecha no puede ser anterior a hoy.` | La fecha límite está en el pasado. |
-| `La extensión estimada debe ser un número o un rango de páginas, p. ej. 50-140.` | Escribe `80` o `50-140`. |
-| `Opción no válida en …` | La página está usando preguntas viejas. Recarga con **Ctrl+Shift+R**. |
-| `Solicitud rechazada.` | Se llenó el campo trampa "Sitio web". Puede pasar si el autocompletado del navegador lo rellena: desactívalo o recarga. |
+| `Missing: …` / `This field is required.` | A required field is empty. |
+| `Select an option.` | A single choice or dropdown question has no selection. |
+| `Specify the "Other" option.` | "Other" was ticked without writing which. |
+| `Type your number with the country code (for example +15551234567) or the local number only.` | Invalid phone. Valid examples: `71234567`, `+59171234567`. |
+| `Use letters only, no numbers.` | City or country with digits or symbols. |
+| `The date cannot be earlier than today.` | The deadline is in the past. |
+| `The estimated length must be a number or a range of pages, e.g. 50-140.` | Type `80` or `50-140`. |
+| `Invalid option in …` | The page is using old questions. Reload with **Ctrl+Shift+R**. |
+| `Request rejected.` | The honeypot field "Website" was filled. It can happen if the browser autofill fills it: turn autofill off or reload. |
 
-### Tipo de archivo no permitido / Tamaño de archivo no permitido / Demasiados archivos
+### File type not allowed / File size not allowed / Too many files
 
-**Causa.** El archivo no cumple las reglas de `FILE_RULES`: extensión permitida, tamaño total máximo por campo y cantidad máxima de archivos.
+**Cause.** The file does not meet the rules in `FILE_RULES`: allowed extension, maximum total size per field and maximum number of files.
 
-**Solución.** Convierte o comprime el archivo. Para cambiar los límites, edita `FILE_RULES` en `Code.gs` y publica una nueva versión.
+**Solution.** Convert or compress the file. To change the limits, edit `FILE_RULES` in `Code.gs` and deploy a new version.
 
-### El archivo "x" no es un PDF válido. Revisa que no esté dañado.
+### The file "x" is not a valid PDF. Check that it is not damaged.
 
-**Causa.** El servidor compara los primeros bytes del archivo con la firma real del formato declarado por la extensión. Falla si el archivo está dañado, está vacío, o es de otro tipo con la extensión cambiada (por ejemplo, un ejecutable renombrado a `.pdf`, o una imagen renombrada a `.docx`).
+**Cause.** The server compares the first bytes of the file with the real signature of the format declared by the extension. It fails if the file is damaged, empty, or of another type with a changed extension (for example, an executable renamed to `.pdf`, or an image renamed to `.docx`).
 
-**Solución.** Abre el archivo en su programa original y vuelve a guardarlo o exportarlo. Si el archivo es legítimo y sigue rechazándose, su formato puede no estar entre los verificados (PDF, JPG, PNG, WebP, HEIC, DOC, DOCX).
+**Solution.** Open the file in its original program and save or export it again. If the file is legitimate and keeps being rejected, its format may not be among the verified ones (PDF, JPG, PNG, WebP, HEIC, DOC, DOCX).
 
-### La subida de "x" se interrumpió. Vuelve a intentar.
+### The upload of "x" was interrupted. Please try again.
 
-**Causa.** La sesión de subida de Drive caducó o se perdió (404 o 410), por ejemplo tras dejar el formulario abierto muchas horas.
+**Cause.** The Drive upload session expired or was lost (404 or 410), for example after leaving the form open for many hours.
 
-**Solución.** Pulsa **Reintentar**. Si no funciona, recarga la página y vuelve a enviar.
+**Solution.** Press **Retry**. If it does not work, reload the page and submit again.
 
-### Un archivo no terminó de subirse / La sesión expiró / La subida expiró
+### A file did not finish uploading / The session expired / The upload expired
 
-**Síntoma.** Cualquiera de estos mensajes pide "Vuelve a enviar la solicitud".
+**Symptom.** Any of these messages asks you to "submit the request again".
 
-**Causa.** El servidor guarda cada solicitud y cada subida en una caché de 6 horas. Si el usuario tardó más, o si la caché se vació, el servidor ya no reconoce la solicitud. El formulario reinicia el estado solo.
+**Cause.** The server keeps every request and every upload in a 6-hour cache. If the visitor took longer, or the cache was emptied, the server no longer recognizes the request. The form resets its own state.
 
-**Solución.** Volver a enviar. Los archivos ya subidos de esa sesión se vuelven a subir.
+**Solution.** Submit again. The files already uploaded in that session are uploaded again.
 
-### Los datos del carnet cambiaron. Vuelve a enviar la solicitud.
+### The ID details changed. Please submit the request again.
 
-**Causa.** Tras un envío fallido, la persona cambió el carnet o la extensión. La carpeta ya estaba creada para los datos anteriores.
+**Cause.** After a failed submission, the person changed the ID number or the country. The folder was already created for the previous data.
 
-**Solución.** Volver a enviar. Se crea la carpeta correcta.
+**Solution.** Submit again. The right folder is created.
 
-### Drive no aceptó el fragmento / Drive respondió 4xx o 5xx
+### Drive did not accept the chunk / Drive responded 4xx or 5xx
 
-**Causa.** Error pasajero de Drive, o la cuenta dueña del script se quedó sin espacio.
+**Cause.** A passing Drive error, or the account that owns the script ran out of space.
 
-**Solución.** El formulario reintenta hasta 4 veces con espera creciente. Si persiste, revisa el almacenamiento de la cuenta dueña del script (drive.google.com/settings/storage) y vuelve a intentar.
+**Solution.** The form retries up to 4 times with growing waits. If it persists, check the storage of the account that owns the script (drive.google.com/settings/storage) and try again.
 
-### La barra se queda mucho tiempo al 100 %
+### The bar stays at 100 % for a long time
 
-**Causa.** El formulario ya subió todo y está esperando que el servidor registre la solicitud. Si otra petición retiene el candado, espera hasta 30 segundos y reintenta.
+**Cause.** The form already uploaded everything and is waiting for the server to record the request. If another request holds the lock, it waits up to 30 seconds and retries.
 
-**Solución.** Espera. Si pasan varios minutos y termina con error, mira el registro de ejecución ([Cómo diagnosticar](#cómo-diagnosticar)) y no vuelvas a pulsar el botón repetidamente.
+**Solution.** Wait. If several minutes pass and it ends with an error, look at the execution log ([How to diagnose](#how-to-diagnose)) and do not press the button repeatedly.
 
-### La subida de archivos grandes es lenta
+### Uploading large files is slow
 
-**Causa.** Cada fragmento de 8 MB pasa por Apps Script, que tiene una latencia fija de varios segundos por petición. Hasta 3 archivos suben a la vez.
+**Cause.** Every 8 MB chunk goes through Apps Script, which has a fixed latency of several seconds per request. Up to 3 files are uploaded at the same time.
 
-**Solución.** Es el comportamiento esperado: un archivo de 1 GB tarda varios minutos. La conexión del usuario también cuenta.
+**Solution.** It is the expected behavior: a 1 GB file takes several minutes. The visitor's connection also counts.
 
 ---
 
-## Panel de administración
+## Admin panel
 
-### Contraseña incorrecta / Demasiados intentos fallidos. Espera 15 minutos.
+### Wrong password / Too many failed attempts. Wait 15 minutes.
 
-**Causa.** Contraseña equivocada, o 20 intentos fallidos seguidos, que bloquean el login 15 minutos.
+**Cause.** A wrong password, or 20 failed attempts in a row, which block the login for 15 minutes.
 
-**Solución.** Si la recuerdas, espera 15 minutos. Si no, ver [Olvidé la contraseña](#olvidé-la-contraseña).
+**Solution.** If you remember it, wait 15 minutes. If not, see [I forgot the password](#i-forgot-the-password).
 
-### Olvidé la contraseña
+### I forgot the password
 
-**Solución.** En el editor de Apps Script, elige la función `resetAdminPassword` en el desplegable de funciones y pulsa **Ejecutar**. El **Registro de ejecución** muestra la línea `Nueva contraseña del panel admin: …`. Entra con ella y cámbiala desde el panel. Si el registro no se ve, ábrelo en **Ejecuciones**.
+**Solution.** In the Apps Script editor, choose the function `resetAdminPassword` in the function dropdown and press **Run**. The **Execution log** shows the line `New admin panel password: …`. Sign in with it and change it from the panel. If the log is not visible, open it in **Executions**.
 
-> La contraseña inicial solo se imprime la primera vez que corre `setup()`. Si `setup()` se ejecuta de nuevo, no la vuelve a mostrar.
+> The initial password is printed only the first time `setup()` runs. If `setup()` runs again, it does not show it again.
 
-### Falta la contraseña del panel. Ejecuta setup().
+### The panel password is missing. Run setup().
 
-**Causa.** El proyecto no tiene contraseña guardada porque `setup()` nunca corrió.
+**Cause.** The project has no stored password because `setup()` never ran.
 
-**Solución.** Ejecuta `setup()`, o `resetAdminPassword` si solo falta la contraseña.
+**Solution.** Run `setup()`, or `resetAdminPassword` if only the password is missing.
 
-### La sesión expiró. Vuelve a ingresar.
+### Your session expired. Please sign in again.
 
-**Causa.** Las sesiones del panel duran 2 horas.
+**Cause.** Panel sessions last 2 hours.
 
-**Solución.** Vuelve a entrar. Los cambios sin guardar se pierden: guarda antes de dejar el panel abierto mucho tiempo.
+**Solution.** Sign in again. Unsaved changes are lost: save before leaving the panel open for a long time.
 
-### No se guardó: …
+### Not saved: …
 
-| Mensaje | Causa |
+| Message | Cause |
 |---|---|
-| `Hay una pregunta sin texto.` | Una pregunta quedó sin enunciado. Escríbelo o elimínala. |
-| `La pregunta "…" necesita al menos una opción.` | Una lista, opción única o casillas sin opciones. |
-| `Agrega al menos un correo de aviso.` | La lista de correos está vacía. |
-| `Correo no válido: …` | Un correo mal escrito. |
-| `Máximo 10 correos de aviso.` / `Máximo 60 preguntas.` | Límites del sistema (`MAX_QUESTIONS` en `Code.gs`). |
-| `Identificador de pregunta no válido.` / `Tipo de pregunta no válido.` | La configuración enviada no es la que generó el panel. Recarga la página y repite. |
+| `There is a question without text.` | A question has no wording. Write it or delete it. |
+| `The question "…" needs at least one option.` | A dropdown, single choice or checkboxes question without options. |
+| `Add at least one notification email.` | The email list is empty. |
+| `Invalid email: …` | A badly written email. |
+| `Maximum 10 notification emails.` / `Maximum 60 questions.` | System limits (`MAX_QUESTIONS` in `Code.gs`). |
+| `Invalid question identifier.` / `Invalid question type.` | The configuration sent is not the one the panel generated. Reload the page and repeat. |
 
-### Las preguntas que edité no cambian en el formulario
+### The questions I edited do not change in the form
 
-**Causa.** La configuración se guarda 10 minutos en la caché del servidor y el navegador puede tener la página anterior.
+**Cause.** The configuration is kept for 10 minutes in the server cache and the browser may hold the previous page.
 
-**Solución.** Guarda de nuevo en el panel (renueva la caché) y recarga el formulario con **Ctrl+Shift+R**.
+**Solution.** Save again in the panel (it renews the cache) and reload the form with **Ctrl+Shift+R**.
 
-### Una pregunta de fábrica volvió a su texto o tipo original
+### A factory question went back to its original text or type
 
-**Causa.** Al actualizar el código se subió `CONFIG_VERSION`, y la migración (`migrateConfig_`) reescribe el texto, el tipo y las opciones de las preguntas listadas en `MIGRATED_IDS`. Conserva si están activas u obligatorias, su sección y su orden.
+**Cause.** `CONFIG_VERSION` was bumped when the code was updated, and the migration (`migrateConfig_`) rewrites the text, type and options of the questions listed in `MIGRATED_IDS`. It keeps whether they are active or required, their section and their order.
 
-**Solución.** Vuelve a editarla en el panel. Para evitarlo en el futuro, no subas `CONFIG_VERSION` salvo que cambies esas preguntas en `Code.gs` a propósito.
+**Solution.** Edit it again in the panel. To avoid it in the future, do not bump `CONFIG_VERSION` unless you change those questions in `Code.gs` on purpose.
 
-### No puedo cambiar el tipo de una pregunta
+### I cannot change the type of a question
 
-**Causa.** Las preguntas de fábrica solo cambian de tipo dentro de su familia: respuesta corta ↔ párrafo, y lista ↔ opción única ↔ casillas. Nombre, carnet, extensión y foto del carnet están bloqueados porque arman la carpeta. Celular, ciudad, páginas, fecha y archivos tienen un tipo fijo porque validan un dato concreto.
+**Cause.** Factory questions only change type within their family: short answer ↔ paragraph, and dropdown ↔ single choice ↔ checkboxes. Full name, ID number, ID country and ID photo are locked because they build the folder. Phone, city, pages, date and files have a fixed type because they validate a specific datum.
 
-**Solución.** Si necesitas otro comportamiento, crea una pregunta nueva (admite respuesta corta, párrafo, número, fecha, lista, opción única y casillas) y desactiva la de fábrica.
+**Solution.** If you need another behavior, create a new question (it supports short answer, paragraph, number, date, dropdown, single choice and checkboxes) and disable the factory one.
 
-### Fotos del sitio
+### Site photos
 
-| Síntoma | Causa y solución |
+| Symptom | Cause and solution |
 |---|---|
-| `Usa una imagen JPG, PNG o WebP.` | El archivo no es de esos formatos. Convierte la imagen. |
-| `La imagen debe pesar menos de 6 MB.` | El navegador la reduce a 1600 px, pero el original debe poder leerse. Prueba con otra foto o redúcela antes. |
-| `No se pudo abrir esa imagen.` | El navegador no entiende el formato (por ejemplo, HEIC). Conviértela a JPG. |
-| `No se pudo subir: …` (error del servidor) | Suele ser que el administrador del dominio de Google bloquea compartir por enlace, que el Drive está lleno o que la sesión expiró. Mira el registro de ejecución. |
-| `Esa foto no se puede cambiar.` | El identificador no está en `SITE_SLOTS` de `Code.gs`. Agrégalo y publica una nueva versión. |
-| La foto cambió en el panel pero no en el sitio | El navegador guarda la última lista de fotos. Recarga con **Ctrl+Shift+R**. Comprueba que `index.html` y `Code.gs` tengan el mismo identificador. |
-| `No se pudo leer la lista de fotos de la página principal.` | `admin.html` no encuentra `index.html` en la misma carpeta del sitio. |
-| La foto subida no se ve | La CSP debe permitir `https://lh3.googleusercontent.com` en `img-src` (`vercel.json`). |
+| `Use a JPG, PNG or WebP image.` | The file is not one of those formats. Convert the image. |
+| `The image must weigh less than 6 MB.` | The browser shrinks it to 1600 px, but the original must be readable. Try another photo or reduce it first. |
+| `That image could not be opened.` | The browser does not understand the format (for example, HEIC). Convert it to JPG. |
+| `Could not upload: …` (server error) | Usually the domain administrator of Google blocks sharing by link, the Drive is full or the session expired. Look at the execution log. |
+| `That photo cannot be changed.` | The identifier is not in `SITE_SLOTS` of `Code.gs`. Add it and deploy a new version. |
+| The photo changed in the panel but not on the site | The browser keeps the latest list of photos. Reload with **Ctrl+Shift+R**. Check that `index.html` and `Code.gs` use the same identifier. |
+| `Could not read the list of photos of the home page.` | `admin.html` cannot find `index.html` in the same folder of the site. |
+| The uploaded photo is not displayed | The CSP must allow `https://lh3.googleusercontent.com` in `img-src` (`vercel.json`). |
 
 ---
 
-## Hoja de Google Sheets
+## Google Sheets
 
-### Los valores aparecen en columnas equivocadas
+### Values appear in the wrong columns
 
-**Causa.** El servidor escribe cada respuesta en la columna que indica su configuración. Si se **mueven o insertan columnas a mano** en la hoja, los valores nuevos seguirán entrando en la posición original.
+**Cause.** The server writes every answer in the column indicated by its configuration. If you **move or insert columns by hand** in the sheet, new values keep going to the original position.
 
-**Solución.** No muevas ni insertes columnas de la pestaña de respuestas. Para ordenar la vista, usa filtros o vistas de filtro. Las columnas nuevas se agregan solas al final cuando se crea una pregunta desde el panel.
+**Solution.** Do not move or insert columns of the responses tab. To arrange your view, use filters or filter views. New columns are added by themselves at the end when a question is created from the panel.
 
-### Se perdió la lista desplegable de ESTADO
+### The STATUS dropdown disappeared
 
-**Causa.** Se modificó la definición de la tabla de Sheets de forma parcial (por ejemplo, con la API) y se perdió la regla de validación de la columna.
+**Cause.** The definition of the Sheets table was modified partially (for example, through the API) and the validation rule of the column was lost.
 
-**Solución.** Vuelve a seleccionar la columna `ESTADO` y aplica de nuevo la validación de datos (lista desplegable con los estados). No lo hagas con una petición parcial a la API de tablas: reemplaza todas las propiedades de columna.
+**Solution.** Select the `STATUS` column again and apply the data validation again (a dropdown with your statuses). Do not do it with a partial request to the tables API: it replaces all column properties.
 
-### Un encabezado de la hoja cambió solo
+### A header of the sheet changed by itself
 
-**Causa.** Al guardar el panel, el servidor actualiza el encabezado de cada pregunta con su texto actual.
+**Cause.** When the panel is saved, the server updates the header of every question with its current text.
 
-**Solución.** Es esperado: el encabezado sigue el texto de la pregunta. Si quieres otro encabezado, cambia el texto de la pregunta en el panel.
+**Solution.** It is expected: the header follows the text of the question. If you want another header, change the text of the question in the panel.
 
-### Borré una pregunta y su columna sigue en la hoja
+### I deleted a question and its column is still in the sheet
 
-**Causa.** Por diseño: al eliminar una pregunta, su columna y sus respuestas se conservan para no perder datos.
+**Cause.** By design: when a question is deleted, its column and its answers are kept so no data is lost.
 
-**Solución.** Si quieres quitarla, bórrala tú de la hoja. No afecta al funcionamiento.
-
----
-
-## Drive y correos de aviso
-
-### Se creó una carpeta nueva en vez de reutilizar la de la persona
-
-**Causa.** La clave `user:<CI>-<EXT>` de las propiedades del script se perdió (por ejemplo, tras migrar de cuenta) o la carpeta anterior está en la papelera.
-
-**Solución.** Sin la propiedad, el script busca antes una carpeta cuyo nombre empiece con `CI-EXT-`. Si no la encuentra, crea una nueva. Para unir carpetas, muévelas a mano.
-
-### Las carpetas se crean en el Drive equivocado
-
-**Causa.** El script está desplegado con "Ejecutar como: Yo" desde otra cuenta, o se implementó desde la cuenta de quien programó el sistema en vez de la del cliente.
-
-**Solución.** Los archivos ocupan el espacio de la cuenta dueña del script. Despliega el proyecto desde la cuenta correcta (ver [Migrar a otra cuenta](README.md#10-migrar-a-otra-cuenta-de-google)).
-
-### No llegan los correos de aviso
-
-**Causas**
-
-- La lista de correos del panel está vacía o mal escrita.
-- Se agotó la cuota diaria de correo de Apps Script. Los correos fallidos se omiten, pero **la solicitud igual queda registrada**.
-- El correo llegó a spam.
-
-**Solución.** Revisa la lista en el panel, mira la carpeta de spam y el registro de ejecución (busca `No se pudo enviar el aviso`). Si es la cuota, se restablece en 24 horas; mientras tanto las solicitudes siguen entrando a la hoja.
-
-### Quien recibe el aviso no puede abrir la carpeta del usuario
-
-**Causa.** El acceso de editor a la carpeta principal se da al guardar el panel con ese correo en la lista. Además, el correo debe corresponder a una cuenta de Google.
-
-**Solución.** Quita y vuelve a agregar el correo en el panel, y guarda. Si el correo no es de Google, compártele la carpeta por enlace.
-
-### Seguridad: me preocupa que alguien suba un archivo infectado
-
-**Qué hace el sistema.** Valida la extensión, el tamaño y el primer fragmento del archivo (su firma real). Los archivos nunca se ejecutan ni se publican. Drive los analiza con su antivirus al descargarlos.
-
-**Qué se recomienda a quien los abre.** Descargar y abrir los archivos con un antivirus actualizado, y desconfiar de documentos de Word que pidan "habilitar macros". Si no necesitas `.doc` (el formato antiguo, que admite macros), quítalo de `EXT_DOCS` en `Code.gs` y acepta solo `.docx`.
+**Solution.** If you want it gone, delete it yourself from the sheet. It does not affect operation.
 
 ---
 
-## Frontend y hosting (Vercel)
+## Drive and notification emails
 
-### La página se ve sin estilos, sin fotos o sin datos en producción
+### A new folder was created instead of reusing the person's folder
 
-**Síntoma.** Funciona en local pero en producción faltan fuentes, fotos o las preguntas no cargan.
+**Cause.** The key `user:<ID>-<COUNTRY>` of the script properties was lost (for example, after migrating accounts) or the previous folder is in the trash.
 
-**Causa.** La política de contenido de `vercel.json` bloquea algo que el sitio intenta cargar. Por defecto solo permite: scripts propios, estilos propios y de Google Fonts, fuentes de `fonts.gstatic.com`, imágenes propias, `data:`, `blob:` y `lh3.googleusercontent.com`, y conexiones a `script.google.com` y `script.googleusercontent.com`.
+**Solution.** Without the property, the script first looks for a folder whose name starts with `ID-COUNTRY-`. If it does not find one, it creates a new one. To merge folders, move them by hand.
 
-**Solución**
+### Folders are created in the wrong Drive
 
-1. Abre la consola del navegador (F12) y busca mensajes `Refused to load …` o `Content Security Policy`.
-2. El mensaje indica la directiva y el dominio bloqueados. Agrega ese dominio a la directiva correspondiente de `vercel.json` (`img-src`, `connect-src`, `script-src`…).
-3. Haz commit y push. Vercel vuelve a desplegar solo.
+**Cause.** The script is deployed with "Execute as: Me" from another account, or it was deployed from the account of whoever built the system instead of the client's.
 
-### Vercel pide iniciar sesión para ver el sitio
+**Solution.** The files use the storage of the account that owns the script. Deploy the project from the right account (see [Moving to another Google account](README.md#12-moving-to-another-google-account)).
 
-**Causa.** La protección de despliegues (Deployment Protection) está activa.
+### The notification emails do not arrive
 
-**Solución.** En el proyecto de Vercel: **Settings > Deployment Protection**, desactívala para producción.
+**Causes**
 
-### Vercel no ve mi repositorio privado
+- The email list in the panel is empty or badly written.
+- The daily email quota of Apps Script was reached. Failed emails are skipped, but **the request is still recorded**.
+- The email went to spam.
 
-**Causa.** La aplicación de GitHub de Vercel no tiene permiso sobre ese repositorio.
+**Solution.** Check the list in the panel, look in the spam folder and in the execution log (search for `Could not send the notification`). If it is the quota, it resets in 24 hours; meanwhile requests keep entering the sheet.
 
-**Solución.** En <https://vercel.com/new>, pulsa **Adjust GitHub App Permissions** y dale acceso a ese repositorio.
+### Whoever receives the notification cannot open the user's folder
 
-### Cambié algo y el sitio sigue igual
+**Cause.** Editor access to the main folder is granted when the panel is saved with that email in the list. Also, the email must belong to a Google account.
 
-**Causas**
+**Solution.** Remove and add the email again in the panel, and save. If the email is not a Google one, share the folder with them by link.
 
-- Vercel todavía está desplegando (tarda 1 o 2 minutos tras el `push`).
-- El navegador tiene la versión anterior en caché.
-- Las fotos de `assets/` se guardan en caché 30 días (`Cache-Control` en `vercel.json`): si reemplazas una foto con el **mismo nombre**, el navegador puede seguir mostrando la anterior.
+### I am worried that someone uploads an infected file
 
-**Solución.** Espera el despliegue, recarga con **Ctrl+Shift+R** y, para fotos reemplazadas, usa un nombre de archivo nuevo.
+**What the system does.** It validates the extension, the size and the first chunk of the file (its real signature). Files are never executed or published. Drive scans them with its antivirus when they are downloaded.
 
-### `/apps-script/Code.gs` o `/README.md` dan 404 en el sitio
-
-**Causa.** Es intencional: `.vercelignore` excluye esos archivos del sitio público.
-
-### El formulario dice "No se pudo cargar" y `config.js` todavía tiene el texto de ejemplo
-
-**Causa.** `SCRIPT_URL` sigue con `PEGAR_AQUI_LA_URL_DEL_WEB_APP`.
-
-**Solución.** Pon la URL `/exec` del Web App en `config.js`, haz commit y push.
+**What is recommended to whoever opens them.** Download and open files with an up-to-date antivirus, and distrust Word documents that ask you to "enable macros". If you do not need `.doc` (the old format, which supports macros), remove it from `EXT_DOCS` in `Code.gs` and accept only `.docx`.
 
 ---
 
-## Git y terminal en Windows
+## Frontend and hosting (Vercel)
 
-| Problema | Solución |
+### The page has no styles, photos or data in production
+
+**Symptom.** It works locally but in production fonts or photos are missing, or the questions do not load.
+
+**Cause.** The content policy in `vercel.json` blocks something the site tries to load. By default it only allows: own scripts, own styles and Google Fonts styles, fonts from `fonts.gstatic.com`, own images, `data:`, `blob:` and `lh3.googleusercontent.com` images, and connections to `script.google.com` and `script.googleusercontent.com`.
+
+**Solution**
+
+1. Open the browser console (F12) and look for `Refused to load …` or `Content Security Policy` messages.
+2. The message names the directive and the blocked domain. Add that domain to the matching directive in `vercel.json` (`img-src`, `connect-src`, `script-src`...).
+3. Commit and push. Vercel deploys again by itself.
+
+### Vercel asks me to sign in to see the site
+
+**Cause.** Deployment Protection is on.
+
+**Solution.** In the Vercel project: **Settings > Deployment Protection**, turn it off for production.
+
+### Vercel cannot see my private repository
+
+**Cause.** The Vercel GitHub application has no permission over that repository.
+
+**Solution.** At <https://vercel.com/new>, press **Adjust GitHub App Permissions** and give it access to that repository.
+
+### I changed something and the site is still the same
+
+**Causes**
+
+- Vercel is still deploying (it takes 1 or 2 minutes after the `push`).
+- The browser has the previous version in cache.
+- Photos in `assets/` are cached for 30 days (`Cache-Control` in `vercel.json`): if you replace a photo with the **same name**, the browser may keep showing the old one.
+
+**Solution.** Wait for the deployment, reload with **Ctrl+Shift+R** and, for replaced photos, use a new file name.
+
+### `/apps-script/Code.gs` or `/README.md` give 404 on the site
+
+**Cause.** It is intentional: `.vercelignore` excludes those files from the public site.
+
+### The form says "could not be loaded" and `config.js` still has the sample text
+
+**Cause.** `SCRIPT_URL` still holds `PASTE_THE_WEB_APP_URL_HERE`.
+
+**Solution.** Put the `/exec` URL of the Web App in `config.js`, commit and push.
+
+---
+
+## Git and the Windows terminal
+
+| Problem | Solution |
 |---|---|
-| En PowerShell, `&&` da error (`The token '&&' is not a valid statement separator`) | En Windows PowerShell 5.1 no existe `&&`. Pon cada comando en su propia línea, o sepáralos con `;`. |
-| `gh` no se reconoce justo después de instalarlo | Cierra la terminal y abre una nueva: la instalación actualiza el PATH. |
-| `git push` rechazado (`non-fast-forward`) | Hay commits remotos que no tienes. Ejecuta `git pull --rebase` y luego `git push`. |
-| Avisos `CRLF will be replaced by LF` | Son inofensivos: Git normaliza los saltos de línea de Windows. |
-| Escribí `! comando` en PowerShell y falló | El prefijo `!` solo funciona dentro del chat de Claude Code. En PowerShell se escribe el comando sin `!`. |
-| Subí fotos pesadas por error y el repositorio crece | Las fotos de `assets/` están pensadas para versionarse. Si agregas muchas, redúcelas antes. Quitarlas del historial exige reescribirlo. |
+| In PowerShell, `&&` gives an error (`The token '&&' is not a valid statement separator`) | Windows PowerShell 5.1 has no `&&`. Put each command on its own line, or separate them with `;`. |
+| `gh` is not recognized right after installing it | Close the terminal and open a new one: the installation updates the PATH. |
+| `git push` rejected (`non-fast-forward`) | There are remote commits you do not have. Run `git pull --rebase` and then `git push`. |
+| `CRLF will be replaced by LF` warnings | They are harmless: Git normalizes the Windows line endings. |
+| Heavy photos were committed by mistake and the repository grows | The photos in `assets/` are meant to be versioned. If you add many, reduce them first. Removing them from the history requires rewriting it. |
 
 ---
 
-## Lista de comprobación después de cualquier cambio
+## Checklist after any change
 
-Úsala tras publicar una versión nueva del backend o del sitio.
+Use it after deploying a new backend version or a new site version.
 
-1. `curl -sL "<URL /exec>"` devuelve `{"ok":true,…}`.
-2. `curl -sL -H "Content-Type: text/plain" -d '{"action":"getConfig"}' "<URL /exec>"` devuelve las preguntas esperadas.
-3. La landing carga sin fotos rotas, y la consola (F12) no muestra errores de la política de contenido.
-4. El formulario abre, muestra los tres pasos y las listas de sugerencias.
-5. El panel `/admin.html` muestra el login, y entra con la contraseña.
-6. Un envío de prueba con un carnet inventado crea la carpeta en Drive, la fila en la hoja y el correo de aviso.
-7. Los datos de prueba se borran (carpeta y fila).
+1. `curl -sL "<URL /exec>"` returns `{"ok":true,…}`.
+2. `curl -sL -H "Content-Type: text/plain" -d '{"action":"getConfig"}' "<URL /exec>"` returns the expected questions.
+3. The landing page loads with no broken photos, and the console (F12) shows no content policy errors.
+4. The form opens, shows the three steps and the suggestion lists.
+5. The panel `/admin.html` shows the login, and the password lets you in.
+6. A test submission with a made-up ID number creates the folder in Drive, the row in the sheet and the notification email.
+7. The test data is deleted (folder and row).

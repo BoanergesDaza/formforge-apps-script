@@ -1,8 +1,8 @@
 /**
- * Academia Ejemplo — formulario de solicitud.
+ * Example Academy - request form.
  *
- * Las secciones y preguntas llegan del Web App (las define el panel admin).
- * Valida por pasos, sube cada archivo por fragmentos y al final registra la solicitud.
+ * Sections and questions come from the Web App (they are defined in the admin panel).
+ * It validates step by step, uploads each file in chunks and finally records the request.
  */
 (function () {
   'use strict';
@@ -23,8 +23,8 @@
     questions: [],
     fileRules: {},
     suggestions: {},
-    files: {}, // categoría -> File[]
-    // Se conservan entre reintentos para no volver a subir lo ya subido.
+    files: {}, // category -> File[]
+    // Kept between retries so that what was already uploaded is not uploaded again.
     requestId: null,
     requestKey: null,
     chunkSize: 0,
@@ -35,7 +35,7 @@
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
-  const form = $('#solicitud');
+  const form = $('#request-form');
 
   class ApiError extends Error {
     constructor(message, code) {
@@ -45,7 +45,7 @@
   }
 
   // -------------------------------------------------------------------------
-  // Construcción del formulario a partir de la configuración
+  // Building the form from the configuration
   // -------------------------------------------------------------------------
 
   function el(tag, attrs, children) {
@@ -59,7 +59,7 @@
     return node;
   }
 
-  /** Listas de sugerencias (universidades, ciudades) para los campos de texto que las piden. */
+  /** Suggestion lists (universities, cities) for the text fields that ask for them. */
   function buildSuggestions() {
     Object.keys(state.suggestions).forEach(function (name) {
       if (document.getElementById('dl-' + name)) return;
@@ -92,13 +92,13 @@
     const id = 'f-' + q.id;
     const optional = !q.required;
     const labelChildren = [document.createTextNode(q.label)];
-    if (optional) labelChildren.push(el('span', { className: 'opt', text: ' (opcional)' }));
+    if (optional) labelChildren.push(el('span', { className: 'opt', text: ' (optional)' }));
     const hint = q.help ? el('p', { className: 'hint', id: id + '-hint', text: q.help }) : null;
     const error = el('p', { className: 'error', 'aria-live': 'polite' });
 
     if (q.type === 'radio' || q.type === 'checkbox') {
       const box = el('div', { className: 'choices' });
-      q.options.concat(q.other ? ['Otro'] : []).forEach(function (opt, i) {
+      q.options.concat(q.other ? ['Other'] : []).forEach(function (opt, i) {
         box.appendChild(el('label', { className: 'choice' }, [
           el('input', { type: q.type, name: q.id, value: opt, id: id + '-' + i }),
           el('span', { text: opt }),
@@ -106,8 +106,8 @@
       });
       if (q.other) {
         box.appendChild(el('input', {
-          type: 'text', className: 'otro', maxlength: 190, placeholder: 'Especifica cuál',
-          'aria-label': 'Especifica la opción Otro', hidden: true,
+          type: 'text', className: 'other-input', maxlength: 190, placeholder: 'Please specify',
+          'aria-label': 'Specify the Other option', hidden: true,
         }));
       }
       return el('fieldset', fieldAttrs(q, q.type), [el('legend', {}, labelChildren), hint, box, error]);
@@ -122,7 +122,7 @@
       });
       const drop = el('label', { className: 'drop' }, [
         input,
-        el('span', { text: rule.maxFiles > 1 ? 'Toca para elegir archivos o arrástralos aquí' : 'Toca para elegir un archivo o arrástralo aquí' }),
+        el('span', { text: rule.maxFiles > 1 ? 'Tap to choose files or drag them here' : 'Tap to choose a file or drag it here' }),
       ]);
       return el('div', fieldAttrs(q, 'files'), [
         el('span', { className: 'label' }, labelChildren), hint, drop, el('ul', { className: 'file-list' }), error,
@@ -138,7 +138,7 @@
         control = el('textarea', { id: id, rows: 3, maxlength: 3000, 'aria-describedby': describedBy });
         break;
       case 'select':
-        control = el('select', { id: id, 'aria-describedby': describedBy }, [el('option', { value: '', text: 'Elegir' })]
+        control = el('select', { id: id, 'aria-describedby': describedBy }, [el('option', { value: '', text: 'Choose' })]
           .concat(q.options.map((o) => el('option', { value: o, text: o }))));
         kind = 'select';
         break;
@@ -152,36 +152,36 @@
         kind = 'number';
         break;
       case 'tel':
-        control = el('input', { id: id, type: 'tel', inputmode: 'tel', autocomplete: 'tel', maxlength: 20, placeholder: 'Ej. 71234567', 'aria-describedby': describedBy });
+        control = el('input', { id: id, type: 'tel', inputmode: 'tel', autocomplete: 'tel', maxlength: 20, placeholder: 'E.g. +15551234567', 'aria-describedby': describedBy });
         Object.assign(extra, {
           'data-normalize': 'phone',
-          'data-pattern': '^(\\+?591[67]\\d{7}|\\+\\d{10,15}|[67]\\d{7})$',
-          'data-msg': 'Escribe 8 dígitos que empiecen con 6 o 7, o un número internacional con + y el código de país.',
+          'data-pattern': '^(\\+\\d{8,15}|\\d{6,10})$',
+          'data-msg': 'Type your number with the country code (for example +15551234567) or the local number only.',
         });
         break;
-      case 'ci':
+      case 'idnumber':
         control = el('input', { id: id, type: 'text', inputmode: 'numeric', maxlength: 15, 'aria-describedby': describedBy });
-        Object.assign(extra, { 'data-normalize': 'upper', 'data-pattern': '^[0-9A-Z-]{4,15}$', 'data-msg': 'Ingresa un carnet válido: números, letras o guion.' });
+        Object.assign(extra, { 'data-normalize': 'upper', 'data-pattern': '^[0-9A-Z-]{4,15}$', 'data-msg': 'Enter a valid ID number: digits, letters or hyphen.' });
         break;
       case 'pages':
-        control = el('input', { id: id, type: 'text', inputmode: 'numeric', maxlength: 15, placeholder: 'Ej. 80 o 50-140', 'aria-describedby': describedBy });
-        Object.assign(extra, { 'data-normalize': 'nospace', 'data-pattern': '^\\d{1,4}(-\\d{1,4})?$', 'data-msg': 'Escribe un número o un rango de páginas, p. ej. 80 o 50-140.' });
+        control = el('input', { id: id, type: 'text', inputmode: 'numeric', maxlength: 15, placeholder: 'E.g. 80 or 50-140', 'aria-describedby': describedBy });
+        Object.assign(extra, { 'data-normalize': 'nospace', 'data-pattern': '^\\d{1,4}(-\\d{1,4})?$', 'data-msg': 'Type a number or a range of pages, e.g. 80 or 50-140.' });
         break;
       case 'place':
         control = el('input', {
-          id: id, type: 'text', maxlength: 80, autocomplete: 'off', placeholder: 'Ej. Santa Cruz de la Sierra, Bolivia',
+          id: id, type: 'text', maxlength: 80, autocomplete: 'off', placeholder: 'E.g. Santa Cruz de la Sierra, Bolivia',
           list: q.suggest ? 'dl-' + q.suggest : false, 'aria-describedby': describedBy,
         });
         Object.assign(extra, {
           'data-normalize': 'place',
           'data-pattern': "^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ .,'’-]{1,79}$",
-          'data-msg': 'Usa solo letras, sin números.',
+          'data-msg': 'Use letters only, no numbers.',
         });
         break;
       default:
         control = el('input', {
-          id: id, type: 'text', maxlength: q.id === 'nombre' ? 120 : 200,
-          autocomplete: q.id === 'nombre' ? 'name' : false,
+          id: id, type: 'text', maxlength: q.id === 'fullName' ? 120 : 200,
+          autocomplete: q.id === 'fullName' ? 'name' : false,
           list: q.suggest ? 'dl-' + q.suggest : false, 'aria-describedby': describedBy,
         });
     }
@@ -224,13 +224,13 @@
     const errors = [];
     Array.from(fileList).forEach(function (file) {
       if (rule.extensions.indexOf(extOf(file.name)) === -1) {
-        errors.push(file.name + ': tipo de archivo no permitido.');
+        errors.push(file.name + ': file type not allowed.');
       } else if (file.size === 0) {
-        errors.push(file.name + ': el archivo está vacío.');
+        errors.push(file.name + ': the file is empty.');
       } else if (list.length >= rule.maxFiles) {
-        errors.push('Máximo ' + rule.maxFiles + (rule.maxFiles === 1 ? ' archivo.' : ' archivos.'));
+        errors.push('Maximum ' + rule.maxFiles + (rule.maxFiles === 1 ? ' file.' : ' files.'));
       } else if (totalSize(list) + file.size > rule.maxTotal) {
-        errors.push(file.name + ': supera el límite de ' + formatBytes(rule.maxTotal) + ' en total.');
+        errors.push(file.name + ': exceeds the limit of ' + formatBytes(rule.maxTotal) + ' in total.');
       } else {
         list.push(file);
       }
@@ -243,7 +243,7 @@
     const ul = $('.file-list', fileField(category));
     ul.textContent = '';
     state.files[category].forEach(function (file, i) {
-      const remove = el('button', { type: 'button', className: 'remove', text: 'Quitar', 'aria-label': 'Quitar ' + file.name });
+      const remove = el('button', { type: 'button', className: 'remove', text: 'Remove', 'aria-label': 'Remove ' + file.name });
       remove.addEventListener('click', function () {
         state.files[category].splice(i, 1);
         renderFileList(category);
@@ -257,7 +257,7 @@
   }
 
   // -------------------------------------------------------------------------
-  // Valores y validación
+  // Values and validation
   // -------------------------------------------------------------------------
 
   function fieldValue(field) {
@@ -278,11 +278,11 @@
     return value;
   }
 
-  /** "Otro" se envía como "Otro: <texto>"; vacío si falta el texto. */
+  /** "Other" is sent as "Other: <text>"; empty if the text is missing. */
   function withOther(field, value) {
-    if (value !== 'Otro') return value;
-    const text = $('.otro', field).value.trim();
-    return text ? 'Otro: ' + text : '';
+    if (value !== 'Other') return value;
+    const text = $('.other-input', field).value.trim();
+    return text ? 'Other: ' + text : '';
   }
 
   function validateField(field) {
@@ -290,19 +290,19 @@
     const value = fieldValue(field);
     const optional = field.hasAttribute('data-optional');
     const isEmpty = Array.isArray(value) ? value.length === 0 : !value;
-    const otherPicked = Boolean($('input[value="Otro"]:checked', field));
+    const otherPicked = Boolean($('input[value="Other"]:checked', field));
 
     if (isEmpty) {
-      if (kind === 'radio' && otherPicked) return 'Especifica la opción "Otro".';
+      if (kind === 'radio' && otherPicked) return 'Specify the "Other" option.';
       if (optional) return '';
-      if (kind === 'files') return 'Sube al menos un archivo.';
-      if (kind === 'checkbox' || kind === 'radio' || kind === 'select') return 'Selecciona una opción.';
-      return 'Este campo es obligatorio.';
+      if (kind === 'files') return 'Upload at least one file.';
+      if (kind === 'checkbox' || kind === 'radio' || kind === 'select') return 'Select an option.';
+      return 'This field is required.';
     }
-    if (kind === 'checkbox' && value.indexOf('') !== -1) return 'Especifica la opción "Otro".';
+    if (kind === 'checkbox' && value.indexOf('') !== -1) return 'Specify the "Other" option.';
     if (field.dataset.pattern && !new RegExp(field.dataset.pattern).test(value)) return field.dataset.msg;
-    if (kind === 'number' && !isFinite(Number(value))) return 'Escribe un número.';
-    if (kind === 'date' && field.dataset.future !== undefined && value < todayISO()) return 'La fecha no puede ser anterior a hoy.';
+    if (kind === 'number' && !isFinite(Number(value))) return 'Type a number.';
+    if (kind === 'date' && field.dataset.future !== undefined && value < todayISO()) return 'The date cannot be earlier than today.';
     return '';
   }
 
@@ -311,7 +311,7 @@
     field.classList.toggle('has-error', Boolean(message));
   }
 
-  /** Valida los campos de una sección y, si focus, enfoca el primero con error. */
+  /** Validates the fields of a section and, if focus is set, focuses the first one with an error. */
   function validateStep(step, focus = true) {
     let firstInvalid = null;
     $$('.step[data-step="' + step + '"] .field').forEach(function (field) {
@@ -336,7 +336,7 @@
   }
 
   // -------------------------------------------------------------------------
-  // Navegación
+  // Navigation
   // -------------------------------------------------------------------------
 
   function totalSteps() {
@@ -365,26 +365,26 @@
   }
 
   // -------------------------------------------------------------------------
-  // Envío
+  // Submission
   // -------------------------------------------------------------------------
 
   async function send() {
     if (state.busy) return;
     state.busy = true;
     showPanel('progress');
-    setProgress(0, 'Preparando tu carpeta…', '');
+    setProgress(0, 'Preparing your folder...', '');
 
     const answers = collectAnswers();
-    const key = answers.ci + '-' + answers.extension + '-' + answers.nombre;
-    // Si cambió el carnet o el nombre tras un intento fallido, se empieza de cero.
+    const key = answers.idNumber + '-' + answers.idExt + '-' + answers.fullName;
+    // If the ID or the name changed after a failed attempt, start from scratch.
     if (state.requestKey !== key) resetRequest();
 
     try {
       if (!state.requestId) {
         const init = await withRetry(() => api('initRequest', {
-          nombre: answers.nombre,
-          ci: answers.ci,
-          extension: answers.extension,
+          fullName: answers.fullName,
+          idNumber: answers.idNumber,
+          idExt: answers.idExt,
           website: $('#f-website').value,
         }));
         state.requestId = init.requestId;
@@ -404,10 +404,10 @@
         let sent = 0;
         inFlight.forEach((bytes) => { sent += bytes; });
         const filesDone = queue.filter((item) => state.uploaded.has(item.file)).length;
-        setProgress((doneBytes + sent) / totalBytes, 'Subiendo documentos…', filesDone + ' de ' + queue.length + ' archivos listos');
+        setProgress((doneBytes + sent) / totalBytes, 'Uploading documents...', filesDone + ' of ' + queue.length + ' files ready');
       };
 
-      // Varios archivos a la vez: cada llamada a Apps Script tiene una latencia fija de segundos.
+      // Several files at once: every call to Apps Script has a fixed latency of a few seconds.
       let nextIndex = 0;
       const worker = async function () {
         while (nextIndex < pending.length) {
@@ -432,7 +432,7 @@
       const failed = results.find((r) => r.status === 'rejected');
       if (failed) throw failed.reason;
 
-      setProgress(1, 'Registrando tu solicitud…', '');
+      setProgress(1, 'Recording your request...', '');
       const uploads = {};
       Object.keys(state.files).forEach(function (category) {
         uploads[category] = state.files[category].map((file) => state.uploaded.get(file));
@@ -443,7 +443,7 @@
       showPanel('done');
     } catch (err) {
       if (err.code === 'EXPIRED') resetRequest();
-      $('#failed-text').textContent = err.message || 'Ocurrió un error inesperado.';
+      $('#failed-text').textContent = err.message || 'An unexpected error occurred.';
       showPanel('failed');
     } finally {
       state.busy = false;
@@ -464,13 +464,13 @@
       try {
         const data = await readBase64(file.slice(offset, offset + state.chunkSize));
         const r = await api('uploadChunk', { uploadId, offset, data });
-        if (!r.done && r.next <= offset) throw new ApiError('Drive no aceptó el fragmento.', 'RETRY');
+        if (!r.done && r.next <= offset) throw new ApiError('Drive did not accept the chunk.', 'RETRY');
         offset = r.done ? file.size : r.next;
         failures = 0;
       } catch (err) {
         if (err.code !== 'RETRY' || ++failures > CONFIG.MAX_RETRIES) throw err;
         await sleep(1000 * 2 ** failures);
-        // Preguntar a Drive cuántos bytes llegaron antes de reintentar.
+        // Ask Drive how many bytes arrived before retrying.
         const status = await api('uploadStatus', { uploadId }).catch(() => null);
         if (status) offset = status.done ? file.size : status.next;
       }
@@ -484,7 +484,7 @@
     const timer = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT_MS);
     let res;
     try {
-      // text/plain evita la petición previa CORS, que Apps Script no responde.
+      // text/plain avoids the CORS preflight request, which Apps Script does not answer.
       res = await fetch(CONFIG.SCRIPT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -492,7 +492,7 @@
         signal: controller.signal,
       });
     } catch (err) {
-      throw new ApiError('No hay conexión con el servidor. Revisa tu internet.', 'RETRY');
+      throw new ApiError('Cannot reach the server. Check your internet connection.', 'RETRY');
     } finally {
       clearTimeout(timer);
     }
@@ -501,7 +501,7 @@
     try {
       json = await res.json();
     } catch (err) {
-      throw new ApiError('El servidor respondió con un error. Intenta de nuevo.', 'RETRY');
+      throw new ApiError('The server answered with an error. Please try again.', 'RETRY');
     }
     if (!json.ok) throw new ApiError(json.error, json.code);
     return json.data;
@@ -533,14 +533,14 @@
   }
 
   // -------------------------------------------------------------------------
-  // Utilidades
+  // Utilities
   // -------------------------------------------------------------------------
 
   function readBase64(blob) {
     return new Promise(function (resolve, reject) {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
-      reader.onerror = () => reject(new ApiError('No se pudo leer el archivo.', 'INVALID'));
+      reader.onerror = () => reject(new ApiError('The file could not be read.', 'INVALID'));
       reader.readAsDataURL(blob);
     });
   }
@@ -570,11 +570,11 @@
   }
 
   // -------------------------------------------------------------------------
-  // Inicio
+  // Start
   // -------------------------------------------------------------------------
 
   async function start() {
-    $('#loading-text').textContent = 'Cargando el formulario…';
+    $('#loading-text').textContent = 'Loading the form...';
     $('#loading-actions').hidden = true;
     try {
       const config = await withRetry(() => api('getConfig', {}));
@@ -589,21 +589,21 @@
       showPanel('form');
       showStep(1);
     } catch (err) {
-      $('#loading-text').textContent = 'No se pudo cargar el formulario. ' + (err.message || '');
+      $('#loading-text').textContent = 'The form could not be loaded. ' + (err.message || '');
       $('#loading-actions').hidden = false;
     }
   }
 
-  // Limpia el error al corregir; muestra el campo "Otro" cuando corresponde.
+  // Clears the error when corrected; shows the "Other" field when it applies.
   form.addEventListener('input', function (e) {
     const field = e.target.closest('.field');
     if (!field) return;
     if (e.target.type === 'radio' || e.target.type === 'checkbox') {
-      const other = $('.otro', field);
+      const other = $('.other-input', field);
       if (other) {
-        const show = Boolean($('input[value="Otro"]:checked', field));
+        const show = Boolean($('input[value="Other"]:checked', field));
         other.hidden = !show;
-        if (show && e.target.value === 'Otro') other.focus();
+        if (show && e.target.value === 'Other') other.focus();
       }
     }
     if (field.classList.contains('has-error')) setError(field, '');
@@ -613,7 +613,7 @@
     if (validateStep(state.step)) showStep(state.step + 1);
   });
   $('#btn-back').addEventListener('click', () => showStep(state.step - 1));
-  // Ciudad y país: los números no se pueden escribir.
+  // City and country: numbers cannot be typed.
   form.addEventListener('input', function (e) {
     if (e.target.closest && e.target.closest('[data-normalize="place"]')) {
       e.target.value = e.target.value.replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ .,'’-]/g, '');
